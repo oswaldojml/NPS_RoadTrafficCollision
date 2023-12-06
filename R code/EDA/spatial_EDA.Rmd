@@ -1,0 +1,119 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "spatial features"
+author:
+    - "Valeria Iapaolo"
+    - "Oswald Jesus Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+#        toc: true
+#        toc_float: true
+        number_sections: true
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_section: true
+date: "2023-11-20"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r libraries inclusions, include=FALSE}
+library(tidyverse)
+library(stats19)
+library(sf)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/full_collisions.RData")
+```
+
+```{r}
+glimpse(full_collisions)
+```
+
+expoting the spatial features of the data
+
+```{r}
+df_22 <- full_collisions %>% filter(accident_year == 2022)
+
+df_sf <- format_sf(df_22)
+```
+
+the police forces:
+
+```{r}
+plot(df_sf[,6])
+```
+
+districts:
+
+```{r}
+plot(df_sf[,14:15])
+```
+
+road types:
+```{r}
+plot(df_sf[,16])
+```
+
+road tyope and speed limits:
+
+```{r}
+plot(df_sf[,18:19])
+```
+
+urban rural
+
+```{r}
+plot(df_sf[,31])
+```
+
+geometry, this are all points:
+
+```{r}
+plot(df_sf[,36])
+```
+
+by police bounddaries:
+
+```{r}
+df_sf %>% 
+  select(n_fatalities = accident_index) %>% 
+  aggregate(by = police_boundaries, FUN = length) %>% 
+  plot()
+```
+
+
+
+plotting the london crashes
+
+```{r}
+london <- df_sf %>% filter(police_force == "Metropolitan Police")
+```
+
+accident severity:
+```{r}
+plot(london[,7])
+```
+
+road class:
+```{r}
+plot(london[,16])
+```
+
+```{r}
+
+```
+

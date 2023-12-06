@@ -1,0 +1,94 @@
+---
+title: "tutorial_ocat"
+output: html_document
+date: "2023-12-03"
+---
+
+
+https://stat.ethz.ch/R-manual/R-devel/library/mgcv/html/ocat.html
+
+Explaination summary:
+https://stats.stackexchange.com/questions/226645/generalized-additive-model-interpretation-with-ordered-categorical-family-in-r
+
+
+# crs library 
+https://cran.r-project.org/web/packages/crs/crs.pdf
+It can be useful to handle categorical variables
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(mgcv)
+```
+
+
+```{r cars}
+
+## Simulate some ordered categorical data...
+set.seed(3);n<-400
+dat <- gamSim(1,n=n)
+dat$f <- dat$f - mean(dat$f)
+
+alpha <- c(-Inf,-1,0,5,Inf)
+R <- length(alpha)-1# the number of catergories
+y <- dat$f
+u <- runif(n)
+u <- dat$f + log(u/(1-u)) 
+for (i in 1:R) {
+  y[u > alpha[i]&u <= alpha[i+1]] <- i
+}
+dat$y <- y
+
+
+```
+
+
+
+```{r}
+## plot the data...
+par(mfrow=c(2,2))
+with(dat,plot(x0,y));with(dat,plot(x1,y))
+with(dat,plot(x2,y));with(dat,plot(x3,y))
+```
+
+
+```{r}
+## fit ocat model to data...
+b <- gam(y~s(x0)+s(x1)+s(x2)+s(x3),family=ocat(R=R),data=dat)
+b
+
+```
+
+```{r}
+plot(b,pages=1)
+```
+```{r}
+gam.check(b)
+```
+
+```{r}
+summary(b)
+```
+
+```{r}
+b$family$getTheta(TRUE) ## the estimated cut points
+```
+
+
+
+
+
+
+```{r}
+
+
+
+
+## predict probabilities of being in each category
+predict(b,dat[1:2,],type="response",se=TRUE)
+```
+
+

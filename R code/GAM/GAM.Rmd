@@ -1,0 +1,127 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "Subsection title"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_section: true
+date: "2023-11-10"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r libraries inclusions, include=FALSE}
+library(mgcv) #to use GAM
+# library(crs)
+
+library(tidyverse)
+```
+
+```{r}
+load("../../clean data/full_collisions.RData")
+# load("../../clean data/functional/df_week.RData")
+
+df_18 <- full_collisions %>% filter(accident_year == 2018)
+rm(full_collisions)
+
+glimpse(df_18)
+```
+
+
+```{r}
+# df_week[,3:ncol(df_week)] %>% t() %>% matplot(type = "l")
+```
+
+```{r, echo = FALSE}
+#plot of the covariates I'm using
+df_18 %>% ggplot(aes(as.factor(speed_limit))) + geom_bar(aes(fill = accident_severity)) 
+df_18 %>% ggplot(aes(time,color = accident_severity)) + geom_freqpoly(bins = 48)
+df_18 %>% ggplot(aes(x = number_of_vehicles, fill = accident_severity)) + 
+  geom_bar(position = "fill") + xlim(c(1,10))
+
+df_18 %>% ggplot(aes(x = number_of_casualties, fill = accident_severity)) + 
+  geom_bar(position = "fill") + xlim(c(1,10))
+
+```
+
+```{r}
+dat <- 
+  df_18 %>% select(accident_severity, speed_limit, time, number_of_vehicles, number_of_casualties) %>%
+  mutate(accident_severity = case_when(
+      accident_severity == "Fatal" ~ 3,
+      accident_severity == "Serious" ~ 2,
+      accident_severity == "Slight" ~ 1
+    )
+  )
+
+dat$time <- as.numeric(dat$time)
+```
+
+
+
+
+```{r}
+R = 3# the number of categories
+b <- gam(accident_severity ~ 
+           number_of_vehicles +
+           s(speed_limit, bs='cr', k = 3) + 
+           s(time, bs = "cc"),
+         family=ocat(R=R), data = dat)
+
+#OBS: bam same as gam, but faster for large data
+
+#com: the number if uniquie values in speed_limit is low, so we need to specify k
+```
+
+
+```{r}
+summary(b)
+```
+```{r}
+b
+```
+
+```{r}
+plot(b,pages=1)
+
+```
+
+
+```{r}
+gam.check(b)
+
+```
+
+
+
+
+```{r}
+b$family$getTheta(TRUE)
+```
+
+
+
+
+
+
+
+
