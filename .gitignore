@@ -1,2 +1,5 @@
 # History files
 .Rhistory
+
+# Ignore full collision data
+clean data/full_collision.RData
