@@ -3,3 +3,5 @@
 
 # Ignore full collision data
 clean data/full_collisions.RData
+
+.Rproj.user
