@@ -183,59 +183,71 @@ b$family$getTheta(TRUE)
 
 ```{r}
 dat <- 
-  full_collisions %>% 
+  full_collisions %>% filter(!(light_conditions %in% c("Data missing or out of range", "Darkness - lighting unknown"))) %>%
   # select(number_of_casualties,
   #                  accident_severity, speed_limit, time, number_of_vehicles) %>%
-  mutate(accident_severity = case_when(
-         accident_severity == "Fatal" ~ 3,
-         accident_severity == "Serious" ~ 2,
-         accident_severity == "Slight" ~ 1)
-         ) %>%
-  mutate(number_of_casualties = number_of_casualties-1)
+  mutate(number_of_casualties = number_of_casualties-1,
+         
+         accident_severity = case_when(
+            accident_severity == "Fatal" ~ 3,
+            accident_severity == "Serious" ~ 2,
+            accident_severity == "Slight" ~ 1),
+         
+         weekend = ifelse(day_of_week %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"), 0, 1),
+         
+         light_conditions = case_when(
+            light_conditions == "Daylight" ~ "Daylight",
+            light_conditions == "Darkness - lights lit"  ~ "Darkness - lights lit",
+            light_conditions %in% c("Darkness - lights unlit", "Darkness - no lighting") ~ "Darkness - no lights"
+            ),
+         
+         previous_accident = ifelse(carriageway_hazards == "Previous accident", 1, 0)
+         
+         
+         )
 
 dat$time <- as.numeric(dat$time)
 ```
 
 
 ```{r}
+# b <- gam(number_of_casualties ~
+#            # accident_severity +
+#            number_of_vehicles +
+#            s(speed_limit, bs='cr', k = 4) +
+#            s(time, bs = "cc") +
+#            urban_or_rural_area +
+#            day_of_week,
+#          family= ziP(),
+#          data = dat)
+
 b <- gam(number_of_casualties ~
-           # accident_severity +
-           number_of_vehicles +
-           s(speed_limit, bs='cr', k = 4) +
+           accident_severity +
+           # year +
            s(time, bs = "cc") +
-           urban_or_rural_area +
-           day_of_week,
+           weekend +
+           # date +
+           s(number_of_vehicles, bs = "cr", k = 3) +
+           # first_road_class +
+           # second_road_class +
+           # road_type +
+           s(speed_limit, bs='cr', k = 5) +
+           # junction_detail +
+           # junction_control +
+           # pedestrian_crossing_human_control +
+           # pedestrian_crossing_physical_facilities +
+           light_conditions +
+           # weather_conditions +
+           special_conditions_at_site +
+           previous_accident + # carriageway_hazards +
+           did_police_officer_attend_scene_of_accident,
+           # trunk_road_flag + ?
+
+           # road_surface_conditions +
+           # urban_or_rural_area,
          family= ziP(),
          data = dat)
 
-# b <- gam(number_of_casualties ~
-#            accident_severity +
-#            s(time, bs = "cc") +
-#            day_of_week +
-#            
-#            number_of_vehicles +
-#            # first_road_class +
-#            # second_road_class + 
-#            road_type +
-#            s(speed_limit, bs='cr', k = 4) +
-#            junction_detail + 
-#            junction_control +
-#            pedestrian_crossing_human_control +
-#            pedestrian_crossing_physical_facilities +
-#            light_conditions +
-#            weather_conditions +
-#            special_conditions_at_site +
-#            carriageway_hazards +
-#            did_police_officer_attend_scene_of_accident +
-#            trunk_road_flag +
-#            
-#            # road_surface_conditions +
-#            urban_or_rural_area,
-#          family= poisson(),
-#          data = dat)
-
-# R-sq.(adj) =  -0.66   Deviance explained = 12.3%
-# UBRE = -0.059622  Scale est. = 1         n = 252617
 
 ```
 

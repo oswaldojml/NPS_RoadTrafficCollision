@@ -40,7 +40,7 @@ load("../../clean data/full_collisions.RData")
 
 
 # At the moment, just year few years
-full_collisions <- full_collisions %>% filter(accident_year %in% c(2015,2016,2017,2018))
+full_collisions <- full_collisions %>% filter(accident_year %in% c(2017,2018))
 
 ```
 
@@ -67,18 +67,21 @@ full_collisions %>% ggplot(aes(number_of_casualties, fill = fill_colors)) +
 ```
 
 
-```{r}
-full_collisions %>% ggplot(aes(number_of_casualties, fill = fill_colors)) +
-  geom_bar(width = 0.05) + scale_x_log10()
-```
-
-
 ## severity
 
 ```{r}
 full_collisions %>% ggplot(aes(x = accident_severity, fill = fill_colors)) + 
   geom_bar(position = "fill")
 ```
+```{r}
+full_collisions %>%
+    ggplot(aes(x = accident_severity, y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") + scale_y_log10()
+```
+
+
+
 ## year
 
 
@@ -88,6 +91,15 @@ fixing the scale to see the proportions:
 full_collisions %>% ggplot(aes(x = accident_year, fill = fill_colors)) + 
   geom_bar(position = "fill")
 ```
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(accident_year), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,5)) + scale_y_log10()
+```
+
+
 
 the composition seems to change over the years, more serious than slight
 
@@ -112,6 +124,25 @@ full_collisions %>% ggplot(aes(x = day_of_week, fill = fill_colors)) +
   geom_bar(position = "fill")
 ```
 
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(day_of_week), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,5)) + scale_y_log10()
+```
+
+We observe an increasing on the week-end
+
+```{r}
+full_collisions %>% mutate(weekend = ifelse(day_of_week %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"), 0, 1)) %>%
+    ggplot(aes(x = as.factor(weekend), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,5))
+```
+
+
 
 ## date
 
@@ -127,11 +158,27 @@ full_collisions %>% mutate(n_accidents = n(),day = mday(date)) %>%  ggplot(aes(d
 ```
 nothing
 
+```{r}
+full_collisions %>% mutate(day = mday(date)) %>% group_by(day) %>% summarise(mean_casualties = mean(number_of_casualties)) %>%
+  ggplot(aes(x = day, y = log(mean_casualties))) +
+  geom_line(color="grey") + geom_point(shape=21, color="black", fill="red", size=4)
+  
+```
+
+
+
 ## number of vehicles:
 
 ```{r}
 full_collisions %>% ggplot(aes(x = number_of_vehicles, fill = fill_colors)) + 
   geom_bar(position = "fill") + xlim(c(1,10))
+```
+
+```{r}
+full_collisions %>% group_by(number_of_vehicles) %>% summarise(mean_casualties = mean(number_of_casualties)) %>%
+  ggplot(aes(x = number_of_vehicles, y = log(mean_casualties))) +
+  geom_line(color="grey") + geom_point(shape=21, color="black", fill="red", size=4) + ylim(c(0,6))
+  
 ```
 
 
@@ -142,12 +189,31 @@ full_collisions %>% ggplot(aes(x = first_road_class, fill = fill_colors)) +
   geom_bar(position = "fill")
 ```
 
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(first_road_class), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,5)) + scale_y_log10()
+```
+
+
 ## second roadd class
 
 ```{r}
 full_collisions %>% ggplot(aes(x = second_road_class, fill = fill_colors)) + 
   geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 90))
 ```
+
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(second_road_class), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,5))
+```
+
+
 
 ## road type
 
@@ -157,12 +223,29 @@ full_collisions %>% ggplot(aes(x = road_type, fill = fill_colors)) +
   geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 90))
 ```
 
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(road_type), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    scale_y_log10()
+```
+
+
 ## speed limit
 
 ```{r}
 full_collisions %>% ggplot(aes(x = as.factor(speed_limit), fill = fill_colors)) + 
   geom_bar(position = "fill") 
 ```
+
+```{r}
+full_collisions %>% group_by(speed_limit) %>% summarise(mean_casualties = mean(number_of_casualties)) %>%
+  ggplot(aes(x = speed_limit, y = log(mean_casualties) )) +
+  geom_line(color="grey") + geom_point(shape=21, color="black", fill="red", size=4)
+```
+
+
 
 ## junction detail
 
@@ -171,12 +254,30 @@ full_collisions %>% ggplot(aes(x = junction_detail, fill = fill_colors)) +
   geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 90))
 ```
 
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(junction_detail), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,5)) + scale_x_discrete(guide = guide_axis(angle = 90)) + scale_y_log10()
+```
+
+
 ## junction control
 
 ```{r}
 full_collisions %>% ggplot(aes(x = junction_control, fill = fill_colors)) + 
   geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 90))
 ```
+
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(junction_control), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,5)) + scale_x_discrete(guide = guide_axis(angle = 90)) + scale_y_log10()
+```
+
 
 ## pedestrian_crossing_human_control
 
@@ -185,12 +286,31 @@ full_collisions %>% ggplot(aes(x = pedestrian_crossing_human_control, fill = fil
   geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 60))
 ```
 
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(pedestrian_crossing_human_control), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,5)) + scale_x_discrete(guide = guide_axis(angle = 60)) + scale_y_log10()
+```
+
+
 ## pedestrian_crossing_physical_facilities
 
 ```{r}
 full_collisions %>% ggplot(aes(x = pedestrian_crossing_physical_facilities, fill = fill_colors)) + 
   geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 60))
 ```
+
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(pedestrian_crossing_physical_facilities), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,5)) + scale_x_discrete(guide = guide_axis(angle = 60),labels = abbreviate) + scale_y_log10()
+```
+
+
 
 ## light_conditions
 
@@ -200,6 +320,48 @@ full_collisions %>% ggplot(aes(x = light_conditions, fill = fill_colors)) +
   theme(legend.position = "none")
 ```
 
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(light_conditions), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,4)) + scale_x_discrete(guide = guide_axis(angle = 60)) + scale_y_log10()
+```
+
+obs:
+> full_collisions %>% group_by(light_conditions) %>% summarise(mean = mean(number_of_casualties), count = n())
+# A tibble: 6 x 3
+  light_conditions              mean  count
+  <fct>                        <dbl>  <int>
+1 Darkness - lighting unknown   1.25   5326
+2 Darkness - lights lit         1.30  51593
+3 Darkness - lights unlit       1.34   1786
+4 Darkness - no lighting        1.51  12798
+5 Data missing or out of range  1         1
+6 Daylight                      1.30 181113
+
+we observe that "Darkness - no lighting" is different from the others
+
+
+```{r}
+
+full_collisions  %>% filter(!(light_conditions %in% c("Data missing or out of range", "Darkness - lighting unknown"))) %>%
+  mutate(light_conditions = case_when(
+            light_conditions == "Daylight" ~ "Daylight",
+            light_conditions == "Darkness - lights lit"  ~ "Darkness - lights lit",
+            light_conditions %in% c("Darkness - lights unlit", "Darkness - no lighting") ~ "Darkness - no lights"
+            )
+         ) %>%
+  
+  ggplot(aes(x = as.factor(light_conditions), y = number_of_casualties)) +
+  geom_boxplot() +
+  stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+  scale_x_discrete(guide = guide_axis(angle = 60)) + scale_y_log10()
+
+```
+
+
+
 ## weather_conditions
 
 ```{r}
@@ -207,6 +369,67 @@ full_collisions %>% ggplot(aes(x = weather_conditions, fill = fill_colors)) +
   geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 60)) +
   theme(legend.position = "none")
 ```
+
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(weather_conditions), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,2)) + scale_x_discrete(guide = guide_axis(angle = 60))
+```
+
+Adding some preprocessing:
+
+```{r}
+full_collisions %>%
+  filter(!(weather_conditions %in% c("Data missing or out of range", "Unknown","Other"))) %>%
+  mutate(
+    wind = case_when(
+      weather_conditions %in% c("Fine + high winds", "Raining + high winds",
+                                             "Snowing + high winds") ~ "High winds",
+      weather_conditions %in% c("Fine no high winds", "Raining no high winds",
+                                             "Snowing no high winds","Fog or mist") ~ "No high winds"
+    ),
+    rainfall = case_when(
+      weather_conditions %in% c("Raining + high winds", "Raining no high winds") ~ "Raining",
+      weather_conditions %in% c("Snowing + high winds", "Snowing no high winds") ~ "Snowing",
+      weather_conditions %in% c("Fine + high winds", "Fine no high winds") ~ "Fine",
+      weather_conditions %in% c("Fog or mist") ~ "Fog"
+    )
+  ) %>%
+  ggplot(aes(x = as.factor(wind), y = number_of_casualties)) +
+  geom_boxplot() +
+  stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+  scale_x_discrete(guide = guide_axis(angle = 60)) + scale_y_log10() +
+  
+full_collisions %>%
+  filter(!(weather_conditions %in% c("Data missing or out of range", "Unknown","Other"))) %>%
+  mutate(
+    wind = case_when(
+      weather_conditions %in% c("Fine + high winds", "Raining + high winds",
+                                             "Snowing + high winds") ~ "High winds",
+      weather_conditions %in% c("Fine no high winds", "Raining no high winds",
+                                             "Snowing no high winds","Fog or mist") ~ "No high winds"
+    ),
+    rainfall = case_when(
+      weather_conditions %in% c("Raining + high winds", "Raining no high winds") ~ "Raining",
+      weather_conditions %in% c("Snowing + high winds", "Snowing no high winds") ~ "Snowing",
+      weather_conditions %in% c("Fine + high winds", "Fine no high winds") ~ "Fine",
+      weather_conditions %in% c("Fog or mist") ~ "Fog"
+    )
+  ) %>%
+  ggplot(aes(x = as.factor(rainfall), y = number_of_casualties)) +
+  geom_boxplot() +
+  stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+  scale_x_discrete(guide = guide_axis(angle = 60)) + scale_y_log10()
+  
+  
+```
+
+
+
+
+
 
 ## special_conditions_at_site
 
@@ -216,6 +439,15 @@ full_collisions %>% ggplot(aes(x = special_conditions_at_site, fill = fill_color
   theme(legend.position = "none")
 ```
 
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(special_conditions_at_site), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    scale_y_log10() + scale_x_discrete(guide = guide_axis(angle = 60))
+```
+
+
 ## carriageway_hazards
 
 ```{r}
@@ -223,6 +455,21 @@ full_collisions %>% ggplot(aes(x = carriageway_hazards, fill = fill_colors)) +
   geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 60)) +
   theme(legend.position = "none")
 ```
+
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(carriageway_hazards), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,2)) + scale_x_discrete(guide = guide_axis(angle = 60))
+```
+
+
+```{r}
+full_collisions %>% mutate(previous_accident = ifelse(carriageway_hazards == "Previous accident", 1, 0))
+```
+
+
 
 ## did_police_officer_attend_scene_of_accident
 
@@ -232,6 +479,15 @@ full_collisions %>% ggplot(aes(x = did_police_officer_attend_scene_of_accident, 
   theme(legend.position = "none")
 ```
 
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(did_police_officer_attend_scene_of_accident), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    ylim(c(0,2)) + scale_x_discrete(guide = guide_axis(angle = 45))
+```
+
+
 ## trunk_road_flag
 
 ```{r}
@@ -240,5 +496,12 @@ full_collisions %>% ggplot(aes(x = trunk_road_flag, fill = fill_colors)) +
   theme(legend.position = "none")
 ```
 
+```{r}
+full_collisions %>%
+    ggplot(aes(x = as.factor(trunk_road_flag), y = number_of_casualties)) +
+    geom_boxplot() +
+    stat_summary(fun.y = "mean", geom = "point", shape = 18, size = 3, color = "red") +
+    scale_y_log10() + scale_x_discrete(guide = guide_axis(angle = 60))
+```
 
-
+seems significant
