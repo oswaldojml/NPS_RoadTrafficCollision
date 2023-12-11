@@ -227,7 +227,7 @@ p1 + p2
 ## pedestrian_crossing_physical_facilities
 
 ```{r}
-p1 <- full_collisions %>% ggplot(aes(pedestrian_crossing_human_control)) + 
+p1 <- full_collisions %>% ggplot(aes(pedestrian_crossing_physical_facilities)) + 
   geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 60)) +
   theme(legend.position = "none")
 

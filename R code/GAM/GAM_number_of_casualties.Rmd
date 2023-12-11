@@ -1,0 +1,448 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "GAM on number of casualties"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_section: true
+date: "2023-11-10"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r libraries inclusions, include=FALSE}
+library(mgcv) #to use GAM
+library(tidyverse)
+```
+
+```{r}
+load("../../clean data/full_collisions.RData")
+
+# At the moment, just year few years
+full_collisions <- full_collisions %>% filter(accident_year %in% c(2017,2018))
+
+glimpse(full_collisions)
+```
+
+# Comments:
+
+Looking the plots in EDA_collisions_nCasualties, we can observe that
+- the distribution looks like a poisson
+
+- spline wrt the time is a good idea
+- Linear wrt n vehicles
+- spline wrt speed limit
+- junction control ??
+- light_conditions ??
+
+
+
+
+# Test Poisson
+
+
+```{r}
+vcd_res = vcd::goodfit(table(full_collisions$number_of_casualties - 1), type="poisson")
+summary(vcd_res)
+```
+
+
+
+
+
+
+# GAM: poisson
+
+```{r}
+dat <- 
+  full_collisions %>% 
+  # select(number_of_casualties,
+  #                  accident_severity, speed_limit, time, number_of_vehicles) %>%
+  mutate(accident_severity = case_when(
+         accident_severity == "Fatal" ~ 3,
+         accident_severity == "Serious" ~ 2,
+         accident_severity == "Slight" ~ 1)
+         ) %>%
+  mutate(number_of_casualties = number_of_casualties-1)
+
+dat$time <- as.numeric(dat$time)
+```
+
+
+```{r}
+# b <- gam(number_of_casualties ~
+#            # accident_severity + 
+#            number_of_vehicles +
+#            s(speed_limit, bs='cr', k = 4) +
+#            s(time, bs = "cc") +
+#            urban_or_rural_area +
+#            day_of_week,
+#          family= poisson(),
+#          data = dat)
+
+## R-sq.(adj) =  -1.17   Deviance explained = 10.4%
+
+
+#OBS: bam same as gam, but faster for large data
+
+#com: the number if unique values in speed_limit is low, so we need to specify k
+
+
+
+b <- gam(number_of_casualties ~
+           accident_severity +
+           s(time, bs = "cc") +
+           day_of_week +
+           
+           number_of_vehicles +
+           # first_road_class +
+           # second_road_class + 
+           road_type +
+           s(speed_limit, bs='cr', k = 4) +
+           junction_detail + 
+           junction_control +
+           pedestrian_crossing_human_control +
+           pedestrian_crossing_physical_facilities +
+           light_conditions +
+           weather_conditions +
+           special_conditions_at_site +
+           carriageway_hazards +
+           did_police_officer_attend_scene_of_accident +
+           trunk_road_flag +
+           
+           # road_surface_conditions +
+           urban_or_rural_area,
+         family= poisson(),
+         data = dat)
+
+# R-sq.(adj) =  -0.66   Deviance explained = 12.3%
+# UBRE = -0.059622  Scale est. = 1         n = 252617
+
+```
+
+
+```{r}
+summary(b)
+```
+
+
+```{r}
+b
+```
+
+
+```{r}
+plot(b,pages=1)
+
+```
+
+
+```{r}
+gam.check(b)
+
+```
+
+
+```{r}
+b$family$getTheta(TRUE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# GAM zero inflated poisson
+
+```{r}
+dat <- 
+  full_collisions %>% 
+  # select(number_of_casualties,
+  #                  accident_severity, speed_limit, time, number_of_vehicles) %>%
+  mutate(accident_severity = case_when(
+         accident_severity == "Fatal" ~ 3,
+         accident_severity == "Serious" ~ 2,
+         accident_severity == "Slight" ~ 1)
+         ) %>%
+  mutate(number_of_casualties = number_of_casualties-1)
+
+dat$time <- as.numeric(dat$time)
+```
+
+
+```{r}
+b <- gam(number_of_casualties ~
+           # accident_severity +
+           number_of_vehicles +
+           s(speed_limit, bs='cr', k = 4) +
+           s(time, bs = "cc") +
+           urban_or_rural_area +
+           day_of_week,
+         family= ziP(),
+         data = dat)
+
+# b <- gam(number_of_casualties ~
+#            accident_severity +
+#            s(time, bs = "cc") +
+#            day_of_week +
+#            
+#            number_of_vehicles +
+#            # first_road_class +
+#            # second_road_class + 
+#            road_type +
+#            s(speed_limit, bs='cr', k = 4) +
+#            junction_detail + 
+#            junction_control +
+#            pedestrian_crossing_human_control +
+#            pedestrian_crossing_physical_facilities +
+#            light_conditions +
+#            weather_conditions +
+#            special_conditions_at_site +
+#            carriageway_hazards +
+#            did_police_officer_attend_scene_of_accident +
+#            trunk_road_flag +
+#            
+#            # road_surface_conditions +
+#            urban_or_rural_area,
+#          family= poisson(),
+#          data = dat)
+
+# R-sq.(adj) =  -0.66   Deviance explained = 12.3%
+# UBRE = -0.059622  Scale est. = 1         n = 252617
+
+```
+
+
+```{r}
+summary(b)
+```
+
+
+```{r}
+b
+```
+
+
+```{r}
+plot(b,pages=1)
+
+```
+
+
+```{r}
+gam.check(b)
+
+```
+
+
+```{r}
+b$family$getTheta(TRUE)
+```
+
+
+
+
+
+# GAM: quasipoisson
+
+```{r}
+dat <- 
+  full_collisions %>% 
+  # select(number_of_casualties,
+  #                  accident_severity, speed_limit, time, number_of_vehicles) %>%
+  mutate(accident_severity = case_when(
+         accident_severity == "Fatal" ~ 3,
+         accident_severity == "Serious" ~ 2,
+         accident_severity == "Slight" ~ 1)
+         ) %>%
+  mutate(number_of_casualties = number_of_casualties - 1)
+
+dat$time <- as.numeric(dat$time)
+```
+
+
+```{r}
+b <- gam(number_of_casualties ~
+           # accident_severity +
+           number_of_vehicles +
+           s(speed_limit, bs='cr', k = 4) +
+           s(time, bs = "cc") +
+           urban_or_rural_area +
+           day_of_week,
+         family= quasipoisson(),
+         data = dat)
+
+# b <- gam(number_of_casualties ~
+#            accident_severity +
+#            s(time, bs = "cc") +
+#            day_of_week +
+#            
+#            number_of_vehicles +
+#            # first_road_class +
+#            # second_road_class + 
+#            road_type +
+#            s(speed_limit, bs='cr', k = 4) +
+#            junction_detail + 
+#            junction_control +
+#            pedestrian_crossing_human_control +
+#            pedestrian_crossing_physical_facilities +
+#            light_conditions +
+#            weather_conditions +
+#            special_conditions_at_site +
+#            carriageway_hazards +
+#            did_police_officer_attend_scene_of_accident +
+#            trunk_road_flag +
+#            
+#            # road_surface_conditions +
+#            urban_or_rural_area,
+#          family= poisson(),
+#          data = dat)
+
+# R-sq.(adj) =  -0.66   Deviance explained = 12.3%
+# UBRE = -0.059622  Scale est. = 1         n = 252617
+
+```
+
+
+```{r}
+summary(b)
+```
+
+```{r}
+b
+```
+
+
+```{r}
+plot(b,pages=1)
+
+```
+
+
+```{r}
+gam.check(b)
+
+```
+
+
+```{r}
+b$family$getTheta(TRUE)
+```
+
+
+
+# GAM negbin
+
+```{r}
+dat <- 
+  full_collisions %>% 
+  # select(number_of_casualties,
+  #                  accident_severity, speed_limit, time, number_of_vehicles) %>%
+  mutate(accident_severity = case_when(
+         accident_severity == "Fatal" ~ 3,
+         accident_severity == "Serious" ~ 2,
+         accident_severity == "Slight" ~ 1)
+         ) %>%
+  mutate(number_of_casualties = number_of_casualties-1)
+
+dat$time <- as.numeric(dat$time)
+```
+
+
+```{r}
+b <- gam(number_of_casualties ~
+           # accident_severity +
+           number_of_vehicles +
+           s(speed_limit, bs='cr', k = 4) +
+           s(time, bs = "cc") +
+           urban_or_rural_area +
+           day_of_week,
+         family= negbin(3),
+         data = dat)
+
+# b <- gam(number_of_casualties ~
+#            accident_severity +
+#            s(time, bs = "cc") +
+#            day_of_week +
+#            
+#            number_of_vehicles +
+#            # first_road_class +
+#            # second_road_class + 
+#            road_type +
+#            s(speed_limit, bs='cr', k = 4) +
+#            junction_detail + 
+#            junction_control +
+#            pedestrian_crossing_human_control +
+#            pedestrian_crossing_physical_facilities +
+#            light_conditions +
+#            weather_conditions +
+#            special_conditions_at_site +
+#            carriageway_hazards +
+#            did_police_officer_attend_scene_of_accident +
+#            trunk_road_flag +
+#            
+#            # road_surface_conditions +
+#            urban_or_rural_area,
+#          family= poisson(),
+#          data = dat)
+
+# R-sq.(adj) =  -0.66   Deviance explained = 12.3%
+# UBRE = -0.059622  Scale est. = 1         n = 252617
+
+```
+
+
+```{r}
+summary(b)
+```
+
+
+```{r}
+b
+```
+
+
+```{r}
+plot(b,pages=1)
+
+```
+
+
+```{r}
+gam.check(b)
+
+```
+
+
+```{r}
+b$family$getTheta(TRUE)
+```
+
+
