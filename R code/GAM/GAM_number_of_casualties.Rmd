@@ -24,8 +24,8 @@ knitr::opts_chunk$set(
     #dev = c('pdf'),
     fig.align = 'center',
     #fig.path = 'output/',
-    fig.height = 6,
-    fig.width = 12
+    fig.height = 9,
+    fig.width = 18
 )
 ```
 
@@ -38,37 +38,27 @@ library(tidyverse)
 load("../../clean data/full_collisions.RData")
 
 # At the moment, just year few years
-full_collisions <- full_collisions %>% filter(accident_year %in% c(2017,2018))
+full_collisions <- full_collisions %>% filter(accident_year %in% c(2018))
 
 glimpse(full_collisions)
 ```
 
 # Comments:
 
-Looking the plots in EDA_collisions_nCasualties, we can observe that
-- the distribution looks like a poisson
+Looking the plots in EDA_collisions_nCasualties, we can observe that - the distribution looks like a poisson
 
-- spline wrt the time is a good idea
-- Linear wrt n vehicles
-- spline wrt speed limit
-- junction control ??
-- light_conditions ??
-
-
-
+-   spline wrt the time is a good idea
+-   Linear wrt n vehicles
+-   spline wrt speed limit
+-   junction control ??
+-   light_conditions ??
 
 # Test Poisson
-
 
 ```{r}
 vcd_res = vcd::goodfit(table(full_collisions$number_of_casualties - 1), type="poisson")
 summary(vcd_res)
 ```
-
-
-
-
-
 
 # GAM: poisson
 
@@ -86,7 +76,6 @@ dat <-
 
 dat$time <- as.numeric(dat$time)
 ```
-
 
 ```{r}
 # b <- gam(number_of_casualties ~
@@ -139,45 +128,27 @@ b <- gam(number_of_casualties ~
 
 ```
 
-
 ```{r}
 summary(b)
 ```
 
-
 ```{r}
 b
 ```
-
 
 ```{r}
 plot(b,pages=1)
 
 ```
 
-
 ```{r}
 gam.check(b)
 
 ```
 
-
 ```{r}
 b$family$getTheta(TRUE)
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # GAM zero inflated poisson
 
@@ -209,7 +180,6 @@ dat <-
 dat$time <- as.numeric(dat$time)
 ```
 
-
 ```{r}
 # b <- gam(number_of_casualties ~
 #            # accident_severity +
@@ -227,7 +197,7 @@ b <- gam(number_of_casualties ~
            s(time, bs = "cc") +
            weekend +
            # date +
-           s(number_of_vehicles, bs = "cr", k = 3) +
+           s(number_of_vehicles, bs = "cr", k = 5) +
            # first_road_class +
            # second_road_class +
            # road_type +
@@ -236,11 +206,11 @@ b <- gam(number_of_casualties ~
            # junction_control +
            # pedestrian_crossing_human_control +
            # pedestrian_crossing_physical_facilities +
-           light_conditions +
+           light_conditions,
            # weather_conditions +
-           special_conditions_at_site +
-           previous_accident + # carriageway_hazards +
-           did_police_officer_attend_scene_of_accident,
+           # special_conditions_at_site +
+           # previous_accident, # carriageway_hazards + ## previous accident has p-value 0.9301 
+           # did_police_officer_attend_scene_of_accident,
            # trunk_road_flag + ?
 
            # road_surface_conditions +
@@ -251,36 +221,36 @@ b <- gam(number_of_casualties ~
 
 ```
 
+```{r}
+
+# accident severity + weekend + light conditions + special conditions at site + previous accident + s(time, bs = "cc") + s(number of vehicles, bs = "cr", k = 3) + s(speed limit, bs='cr', k = 5)
+```
 
 ```{r}
 summary(b)
 ```
 
-
 ```{r}
 b
 ```
 
-
 ```{r}
-plot(b,pages=1)
+# plot(b, ylim = c(-0.3, 0.3))
+plot(b, select = 1, ylim = c(-0.3, 0.3), cex.axis=2, cex.lab = 1.5, n = 150, lwd = 2)
+plot(b, select = 2, xlim = c(0,15), cex.axis=2, cex.lab = 1.5, n = 150, lwd = 2)
+plot(b, select = 3, ylim = c(-0.3, 0.3), cex.axis=2, cex.lab = 1.5, n = 150, lwd = 2)
+# plot(b,pages=3, ylim = c(-0.3, 0.3))
 
 ```
-
 
 ```{r}
 gam.check(b)
 
 ```
 
-
 ```{r}
 b$family$getTheta(TRUE)
 ```
-
-
-
-
 
 # GAM: quasipoisson
 
@@ -298,7 +268,6 @@ dat <-
 
 dat$time <- as.numeric(dat$time)
 ```
-
 
 ```{r}
 b <- gam(number_of_casualties ~
@@ -342,7 +311,6 @@ b <- gam(number_of_casualties ~
 
 ```
 
-
 ```{r}
 summary(b)
 ```
@@ -351,24 +319,19 @@ summary(b)
 b
 ```
 
-
 ```{r}
 plot(b,pages=1)
 
 ```
-
 
 ```{r}
 gam.check(b)
 
 ```
 
-
 ```{r}
 b$family$getTheta(TRUE)
 ```
-
-
 
 # GAM negbin
 
@@ -386,7 +349,6 @@ dat <-
 
 dat$time <- as.numeric(dat$time)
 ```
-
 
 ```{r}
 b <- gam(number_of_casualties ~
@@ -430,31 +392,24 @@ b <- gam(number_of_casualties ~
 
 ```
 
-
 ```{r}
 summary(b)
 ```
 
-
 ```{r}
 b
 ```
-
 
 ```{r}
 plot(b,pages=1)
 
 ```
 
-
 ```{r}
 gam.check(b)
 
 ```
 
-
 ```{r}
 b$family$getTheta(TRUE)
 ```
-
-
