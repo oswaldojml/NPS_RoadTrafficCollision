@@ -1,0 +1,434 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "Functional clustering"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_section: true
+date: "2023-11-10"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r libraries inclusions, include=FALSE}
+library(tidyverse)
+library(roahd)
+#library(fda)
+library(fdacluster)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/functional/df_year.RData")
+load("~/Documents/Nonparametric Statisics/Project/clean data/functional/df_month.RData")
+load("~/Documents/Nonparametric Statisics/Project/clean data/functional/df_week.RData")
+load("~/Documents/Nonparametric Statisics/Project/clean data/functional/df_hour.RData")
+```
+
+first we start with outlier detection in the functional case
+
+```{r}
+fd_year <- fData(1:366,df_year[,2:367])
+```
+
+```{r}
+plot(fd_year,lwd = 1.5,xlab = "day",ylab = "number of crashes per day",main = "dayly crashes in each year")
+```
+
+```{r}
+
+```
+
+
+functional bagplot:
+
+```{r}
+year_fbagplot <- fbplot(fd_year, main="Magnitude outliers yearly data",lwd = 1)
+```
+
+the default F is:
+
+```{r}
+year_fbagplot$Fvalue
+```
+
+
+the outlying years are:
+
+```{r}
+df_year[year_fbagplot$ID_outliers,1]
+```
+
+we can see that the covi year is an outliers as are the firs year where the number of total crashes is much higher than in the next years.
+
+if we try to adjust the inflation factor:
+
+we need to remove the day 366 since it causes problems in the iteerations to find the F:
+
+```{r}
+fd_year2 <- fData(1:365,df_year[,2:366])
+```
+
+```{r}
+year_fbagplot2 <- fbplot(fd_year2, main="Magnitude outliers yearly data",
+                                  adjust = list( N_trials = 20,trial_size = 50,
+                                                 VERBOSE = TRUE ))
+```
+
+the chosen F value is:
+
+```{r}
+year_fbagplot2$Fvalue
+```
+
+the outlying years are:
+
+```{r}
+df_year[year_fbagplot2$ID_outliers,1]
+```
+
+nothing changed.
+
+outiliergram:
+
+```{r}
+invisible(out_year <- outliergram(fd_year,adjust = F,lwd = 3))
+```
+
+no outliers found, adjusting the F:
+
+```{r}
+out_year2 <- outliergram(fd_year2,lwd = 5,adjust = list( N_trials = 20,trial_size = 50,
+                                                 VERBOSE = TRUE ))
+```
+
+```{r}
+out_year2$Fvalue
+```
+
+nothing changed, no outliers detected.
+
+smoothing the data:
+
+```{r}
+days <- 1:365
+lambda <- 10^seq(0,8,by = 0.25)
+gcv <- numeric(length(lambda))
+basis <- create.bspline.basis(days, norder=4)
+
+for (i in 1:length(lambda)){
+  functionalPar <- fdPar(fdobj=basis, Lfdobj=2, lambda=lambda[i])  
+  data.smooth <- smooth.basis(days, as.numeric(df_year[i,2:366]), functionalPar)
+  gcv[i] <- mean(data.smooth$gcv)
+}
+
+plot(log(lambda),gcv,type = "b")
+abline(v = log(lambda[which.min(gcv)]), col = 2)
+
+lambda[which.min(gcv)]
+```
+
+```{r}
+basis <- create.bspline.basis(days, norder=4)
+lam <- lambda[which.min(gcv)]
+functionalPar <- fdPar(fdobj=basis, Lfdobj=2, lambda=lambda[which.min(gcv)])  
+data.smooth <- smooth.basis(days, t(as.matrix(df_year[,2:366])), functionalPar)
+eval.0 <- eval.fd(days, data.smooth$fd, Lfd=0)
+
+plot.fd(data.smooth$fd,xlab='days',ylab='crashes')
+```
+
+```{r}
+data.smooth$df
+```
+
+manually let's set the number of basis at 24:
+
+```{r}
+basis <- create.bspline.basis(rangeval=range(days),nbasis=24,norder = 4)
+data.fd <- Data2fd(y = t(as.matrix(df_year[,2:366])),argvals = days,basisobj = basis)
+plot.fd(data.fd,xlab='days',ylab='crashes')
+```
+
+this captures the behaviour pretty well
+
+trying with 52:
+
+```{r}
+basis <- create.bspline.basis(rangeval=range(days),nbasis=52,norder = 4)
+data.fd <- Data2fd(y = t(as.matrix(df_year[,2:366])),argvals = days,basisobj = basis)
+plot.fd(data.fd,xlab='days',ylab='crashes')
+```
+
+trying with 12:
+
+```{r}
+basis <- create.bspline.basis(rangeval=range(days),nbasis=12,norder = 4)
+data.fd <- Data2fd(y = t(as.matrix(df_year[,2:366])),argvals = days,basisobj = basis)
+plot.fd(data.fd,xlab='days',ylab='crashes')
+```
+
+this is probably too few.
+
+using 24 basis we can do the same as before, this should capture the general trend of the data:
+
+```{r}
+basis <- fda::create.bspline.basis(rangeval=range(days),nbasis=24,norder = 4)
+data.fd <- fda::Data2fd(y = t(as.matrix(df_year[,2:366])),argvals = days,basisobj = basis)
+eval_24 <- fda::eval.fd(days,data.fd,Lfdobj = 0)
+```
+
+```{r}
+fd_year_smooth <- fData(1:365,t(eval_24))
+```
+
+```{r}
+plot(fd_year_smooth,lwd = 3,xlab = "day",ylab = "dayly number of crashes",main = "dayly crashes in each year")
+```
+
+
+functional bagplot:
+
+```{r}
+year_fbagplot <- fbplot(fd_year_smooth, main="Magnitude outliers yearly data")
+```
+
+the default F is:
+
+```{r}
+year_fbagplot$Fvalue
+```
+
+
+the outlying years are:
+
+```{r}
+df_year[year_fbagplot$ID_outliers,1]
+```
+
+we can see that the covid year is an outliers as are the firs year where the number of total crashes is much higher than in the next years.
+
+if we try to adjust the inflation factor:
+
+
+```{r}
+year_fbagplot2 <- fbplot(fd_year_smooth, main="Magnitude outliers yearly data",
+                                  adjust = list( N_trials = 20,trial_size = 50,
+                                                 VERBOSE = TRUE ))
+```
+
+the chosen F value is:
+
+```{r}
+year_fbagplot2$Fvalue
+```
+
+the outlying years are:
+
+```{r}
+df_year[year_fbagplot2$ID_outliers,1]
+```
+
+the first and the covid years are the outliers in a magnitude sense
+
+outiliergram:
+
+```{r}
+invisible(out_year <- outliergram(fd_year_smooth,adjust = F,lwd = 3))
+```
+
+```{r}
+df_year[out_year$ID_outliers,1]
+```
+
+thise are shape outlier, not magnitude outliers.
+
+```{r}
+out_year2 <- outliergram(fd_year_smooth,lwd = 5,adjust = list( N_trials = 20,trial_size = 50,
+                                                 VERBOSE = TRUE ))
+```
+
+```{r}
+out_year2$Fvalue
+```
+
+
+
+```{r}
+df_year[out_year2$ID_outliers,1]
+```
+
+this are shape outliers, not magnitude outliers.
+
+```{r}
+par(mfrow=c(1,2))
+plot(fd_year_smooth[out_year2$ID_outliers,],lwd = 3,main = "outliers")
+plot(fd_year_smooth[-out_year2$ID_outliers,],lwd = 3,main = "non outliers")
+```
+
+we could can try to do clustering of the functional data:
+
+```{r}
+n <- 18
+x <- t(matrix(rep(days,n),365,n))
+y <- as.matrix(df_year[,2:366])
+k <- 2
+
+fdakma0der_shift <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeds = c(1,15),
+  warping_class = "shift",
+  metric = "l2",
+  centroid_type = "medoid",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = TRUE
+)
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "amplitude")
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "phase")
+```
+
+
+```{r}
+diagnostic_plot(fdakma0der_shift)
+```
+
+this is not great,
+
+trying with the affine warping:
+
+
+```{r}
+fdakma0der_affine <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeding_strategy = "kmeans++",
+  warping_class = "affine",
+  metric = "l2",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = TRUE
+)
+```
+
+```{r}
+autoplot(fdakma0der_affine,type = "amplitude")
+```
+
+```{r}
+autoplot(fdakma0der_affine,type = "phase")
+```
+
+
+```{r}
+diagnostic_plot(fdakma0der_affine)
+```
+
+using perason instead of l2 distance:
+
+```{r}
+fdakma0der_shift <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeding_strategy = "kmeans++",
+  warping_class = "shift",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = TRUE
+)
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "amplitude")
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "phase")
+```
+
+this gets the single outlier, the other distance did not because of the oscillations.
+
+```{r}
+fdakma0der_shift <- fdakmeans(x = x,y = y, n_clusters = 4,
+  seeding_strategy = "kmeans++",
+  warping_class = "shift",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = TRUE
+)
+```
+
+```{r}
+autoplot(fdakma0der_shift)
+```
+
+maybe I should cluster the derivatives for a better pattern, but needs smoothing for that.
+
+```{r}
+df_year[which(fdakma0der_shift$memberships==1),1]
+```
+
+```{r}
+df_year[which(fdakma0der_shift$memberships==2),1]
+```
+
+```{r}
+df_year[which(fdakma0der_shift$memberships==3),1]
+```
+
+```{r}
+df_year[which(fdakma0der_shift$memberships==4),1]
+```
+
+
+let's run a comparison of the methods:
+
+```{r}
+system.time(comparison_kmeans <- compare_caps(
+  x,
+  y,
+  n_clusters = 1:5,
+  metric = c("l2", "pearson"),
+  clustering_method = "kmeans",
+  warping_class = c("none", "shift", "dilation", "affine"),
+  centroid_type = "mean",
+  cluster_on_phase = FALSE
+)
+)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "mean",lwd = 3)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "distribution")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "mean")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "distribution")
+```
