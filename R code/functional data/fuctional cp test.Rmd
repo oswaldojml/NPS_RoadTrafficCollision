@@ -1,0 +1,1054 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "functional cp for each police force"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+date: "2023-12-19"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r}
+library(tidyverse)
+library(conformalInference.fd)
+library(roahd)
+library(lubridate)
+library(mgcv)
+library(mgcViz)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/full_collisions.RData")
+```
+
+```{r}
+glimpse(full_collisions)
+```
+
+```{r}
+df <- full_collisions %>% dplyr::select(date,police_force)
+```
+
+```{r}
+df_dayly_police <- df %>% group_by(date,police_force) %>% summarise(n = n()) %>% 
+  mutate(year = year(date),month = month(date),day = day(date),
+         day_of_year = yday(date),weekday = wday(date),week_of_year = isoweek(date)) %>% ungroup()
+```
+
+```{r}
+df_year_police <- df_dayly_police %>% group_by(year,day_of_year,police_force) %>% 
+  summarise(total_crashes = sum(n)) %>% 
+  pivot_wider(names_from = day_of_year, values_from = total_crashes, values_fill = 0) %>% ungroup()
+```
+
+```{r}
+df_month_police <- df_dayly_police %>% group_by(year,month,day,police_force) %>% 
+  summarise(total_crashes = sum(n)) %>% 
+  pivot_wider(names_from = day, values_from = total_crashes, values_fill = 0) %>% ungroup()
+```
+
+```{r}
+df_week_police <- df_dayly_police %>% group_by(year,week_of_year,weekday,police_force) %>%
+  summarise(total_crashes = sum(n)) %>% 
+  pivot_wider(names_from = weekday, values_from = total_crashes, values_fill = 0) %>% ungroup()
+```
+
+here we have weeks that are cut off at the beginning and end of each year!! 
+
+```{r}
+df_hour_police <- full_collisions %>% dplyr::select(date,time,police_force) %>% mutate(hour = hour(time)) %>%
+  group_by(date,hour,police_force) %>% 
+  summarize(tot_crashes = n()) %>% pivot_wider(names_from = hour, values_from = tot_crashes,
+                                               values_fill = 0) %>% ungroup()
+```
+
+```{r}
+rm(full_collisions)
+```
+
+the idea is to make predictions using a conformal approach
+
+## year data:
+
+```{r}
+year_data <-fData(1:366,df_year_police[,3:368])
+```
+
+```{r}
+plot(year_data)
+```
+
+we start by a single police department
+
+```{r}
+year_london <- df_year_police %>% filter(police_force == "Metropolitan Police")
+```
+
+```{r}
+fdata_london <- fData(1:366,year_london[,3:368])
+```
+
+```{r}
+plot(fdata_london)
+```
+
+to build the prediction we use the mean for now, we will then fit the gam for this.
+
+```{r}
+x0=list(as.list(grid))
+fun=mean_lists()
+```
+
+no moulation here:
+
+```{r}
+final.mfData = conformal.fun.split(NULL,NULL, fdata_london,NULL, x0, fun$train.fun, fun$predict.fun,
+                             alpha=0.1,
+                             split=NULL, seed=FALSE, randomized=FALSE,seed.rand=FALSE,
+                             verbose=TRUE, rho=0.5,s.type="identity")
+```
+
+```{r}
+plot_fun(final.mfData)
+```
+
+adding modulation:
+
+```{r}
+final.mfData = conformal.fun.split(NULL,NULL, fdata_london,NULL, x0, fun$train.fun, fun$predict.fun,
+                             alpha=0.1,
+                             split=NULL, seed=FALSE, randomized=FALSE,seed.rand=FALSE,
+                             verbose=TRUE, rho=0.5,s.type="st-dev")
+```
+
+```{r}
+plot_fun(final.mfData)
+```
+
+```{r}
+final.mfData = conformal.fun.split(NULL,NULL, fdata_london,NULL, x0, fun$train.fun, fun$predict.fun,
+                             alpha=0.1,
+                             split=NULL, seed=FALSE, randomized=FALSE,seed.rand=FALSE,
+                             verbose=TRUE, rho=0.5,s.type="alpha-max")
+```
+
+```{r}
+plot_fun(final.mfData)
+```
+
+this learly sucks,
+
+removing the covid year:
+
+```{r}
+fdata_london <- fData(1:366,year_london[-16,3:368])
+```
+
+```{r}
+plot(fdata_london)
+```
+
+to build the prediction we use the mean for now, we will then fit the gam for this.
+
+```{r}
+x0=list(as.list(grid))
+fun=mean_lists()
+```
+
+no moulation here:
+
+```{r}
+final.mfData = conformal.fun.split(NULL,NULL, fdata_london,NULL, x0, fun$train.fun, fun$predict.fun,
+                             alpha=0.1,
+                             split=NULL, seed=FALSE, randomized=FALSE,seed.rand=FALSE,
+                             verbose=TRUE, rho=0.5,s.type="identity")
+```
+
+```{r}
+plot_fun(final.mfData)
+```
+
+this is not working.
+
+using a gam model:
+
+```{r}
+df <- df_dayly_police  %>% mutate(day = factor(wday(date)),
+                                  covid_year = factor((year(date)==2020)))
+```
+
+```{r}
+system.time(
+gam_day_pol_qp_full <- bam(n ~ day + year + covid_year  +
+                                  s(day_of_year,k = 53, bs = "cr") + 
+                       s(police_force, bs = "re"), 
+                data = df, family=quasipoisson(), method='REML')
+)
+```
+
+```{r}
+summary(gam_day_pol_qp_full)
+```
+
+this is quite good here
+
+```{r}
+b_pol_qp_f <- getViz(gam_day_pol_qp_full)
+```
+
+```{r}
+print(plot(b_pol_qp_f, select = c(1,3:7)), pages = 1)
+```
+
+```{r}
+print(plot(b_pol_qp_f, select = 2), pages = 1)
+```
+
+problem with the normality of the random effects, the outlier is probably london:
+
+```{r}
+check(b_pol_qp_f)
+```
+
+not too bed here, but heavy tails here
+
+```{r}
+newd <- with(df, data.frame(day_of_year = 120,
+                                  day = 1,
+                                  year = 2022,
+                                  covid_year = FALSE,
+                                  police_force = levels(police_force)))
+
+p <- predict(gam_day_pol_qp_full, newd, type = "terms", se.fit = TRUE)
+re <- p[["fit"]][ , "s(police_force)"]
+se <- p[["se.fit"]][ , "s(police_force)"]
+
+data <- data.frame(police_force = levels(df$police_force), effect = re,std.err = se)
+```
+
+```{r}
+data %>% 
+ggplot(aes(effect, fct_reorder(police_force, effect))) +
+  geom_vline(xintercept = 0, color = "gray50", lty = 2, linewidth = 1.2) +
+  geom_errorbar(aes(
+    xmin = effect - 1.96*std.err,
+    xmax = effect + 1.96*std.err),width = 0.5, alpha = 0.7) +
+  geom_point(size = 1,colour = "blue") + theme_minimal() + 
+  labs(y = "District", x = "Random effect") + ggtitle("Random effects for each police force") + 
+  theme(legend.position = "none",plot.title = element_text(size = 16,hjust = 0.5)) 
+```
+
+```{r}
+glimpse(df)
+```
+
+we now nee to build the conformal prediction intervals using this:
+
+the idea is to use split conformal prediction using the model above for the prediction
+
+we use as new observations the year 2022, and we then use a calibration set 
+to build a estimate of the value.
+
+we remove the covid year covariate since it will not be possible to obtain the model for the
+non covid years.
+
+```{r}
+system.time(
+gam_day_pol_qp_full <- bam(n ~ day + year +
+                                  s(day_of_year,k = 53, bs = "cr") + 
+                       s(police_force, bs = "re"), 
+                data = df, family=quasipoisson(), method='REML')
+)
+```
+
+```{r}
+summary(gam_day_pol_qp_full)
+```
+
+this is quite good here
+
+```{r}
+b_pol_qp_f <- getViz(gam_day_pol_qp_full)
+```
+
+```{r}
+print(plot(b_pol_qp_f, allTerms = T), pages = 1)
+```
+
+problem with the normality of the random effects, the outlier is probably london:
+
+```{r}
+check(b_pol_qp_f)
+```
+
+```{r}
+newd <- with(df, data.frame(day_of_year = 120,
+                                  day = 1,
+                                  year = 2022,
+                                  covid_year = FALSE,
+                                  police_force = levels(police_force)))
+
+p <- predict(gam_day_pol_qp_full, newd, type = "terms", se.fit = TRUE)
+re <- p[["fit"]][ , "s(police_force)"]
+se <- p[["se.fit"]][ , "s(police_force)"]
+
+data <- data.frame(police_force = levels(df$police_force), effect = re,std.err = se)
+```
+
+```{r}
+data %>% 
+ggplot(aes(effect, fct_reorder(police_force, effect))) +
+  geom_vline(xintercept = 0, color = "gray50", lty = 2, linewidth = 1.2) +
+  geom_errorbar(aes(
+    xmin = effect - 1.96*std.err,
+    xmax = effect + 1.96*std.err),width = 0.5, alpha = 0.7) +
+  geom_point(size = 1,colour = "blue") + theme_minimal() + 
+  labs(y = "District", x = "Random effect") + ggtitle("Random effects for each police force") + 
+  theme(legend.position = "none",plot.title = element_text(size = 16,hjust = 0.5)) 
+```
+
+we now use the algorithm in "The Importance of Being a Band: Finite-Sample Exact Distribution-Free Prediction Sets for Functional Data"
+
+first we assess the quality of the predictions if we only use a subset:
+we have 18 years,we use 2022 for test 2005-2016 for training and the rest for calibration
+
+```{r}
+df_train <- df %>% filter(year <=2016)
+df_cal <- df %>% filter(year > 2016) %>% filter(year < 2022)
+df_test <- df %>% filter(year == 2022)
+```
+
+```{r}
+gam_train <- bam(n ~ day + year +
+                                  s(day_of_year,k = 53, bs = "cr") + 
+                       s(police_force, bs = "re"), 
+                data = df_train, family=quasipoisson(), method='REML')
+```
+
+```{r}
+summary(gam_train)
+```
+
+```{r}
+b <- getViz(gam_train)
+```
+
+```{r}
+print(plot(b, allTerms = T), pages = 1)
+```
+
+```{r}
+check(b)
+```
+
+we can now predict the test set
+
+```{r}
+newd <- df_test %>% dplyr::select(police_force,year,day,day_of_year)
+p <- predict(gam_train, newd, type = "response")
+res <- cbind(newd,p)
+```
+
+```{r}
+i <- 50
+
+act <- df_test %>% filter(police_force==levels(police_force)[i]) %>% dplyr::select(n)
+pred<- res %>% filter(police_force==levels(police_force)[i]) %>% dplyr::select(p)
+
+matplot(cbind(as.numeric(act$n),as.numeric(pred$p)),type = "l",lwd = 2,main = levels(df_test$police_force)[i])
+```
+
+we have problems with the fact that the police departmets changed over time, so some are aggreagated 
+
+the fit is not bad except for london
+
+```{r}
+i <- 30
+
+act <- df_test %>% filter(police_force==levels(police_force)[i]) %>% dplyr::select(n)
+pred<- res %>% filter(police_force==levels(police_force)[i]) %>% dplyr::select(p)
+
+matplot(cbind(as.numeric(act$n),as.numeric(pred$p)),type = "l",lwd = 2,main = levels(df_test$police_force)[i])
+```
+
+this is bad, metropoitan police is clearly an outlier
+
+we are not able co capture the spikes
+
+```{r}
+i <- 3
+
+act <- df_test %>% filter(police_force==levels(police_force)[i]) %>% dplyr::select(n)
+pred<- res %>% filter(police_force==levels(police_force)[i]) %>% dplyr::select(p)
+
+matplot(cbind(as.numeric(act$n),as.numeric(pred$p)),type = "l",lwd = 2,main = levels(df_test$police_force)[i])
+```
+
+for the prediction bands we need also to estimate the modulation function
+
+let's do it for a single police district for the moment:
+
+```{r}
+i <- 50
+cal_new <- df_cal %>% filter(police_force == levels(police_force)[i]) %>%
+  dplyr::select(police_force,year,day,day_of_year,n)
+# this should contain all the days ot just those i crash change, for this ex ok
+# but for small police forces not good
+pred_cal <- predict(gam_train, cal_new, type = "response")
+
+diff <- matrix((cal_new$n - pred_cal),byrow = F,nrow = 365)
+ab_diff <- abs(diff)
+
+l <-  dim(diff)[2]
+alpha <- 0.1
+ncm = apply(ab_diff,1,max)
+x = 1:365
+line_integral = function(x, y) {
+  dx = diff(x)
+  end = length(y)
+  my = (y[1:(end - 1)] + y[2:end]) / 2
+  sum(dx *my)
+} 
+den = line_integral(x, ncm)
+s = ncm/den
+ncs <- apply(ab_diff/s,1,max)
+ncs_sort = c(sort(ncs))
+
+k = ncs_sort[ceiling((l/2 + 1)*(1-alpha))]
+```
+
+```{r}
+cal_test <- df_test %>% filter(police_force == levels(police_force)[i]) %>%
+  dplyr::select(n)
+
+prediction <- res %>% filter(police_force==levels(police_force)[i]) %>% dplyr::select(p)
+
+df_plot <- data.frame(n = cal_test$n,pred = prediction$p, ymax = prediction$p + (k*s),
+                      ymin = pmax( prediction$p -(k*s), rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+  
+```
+
+this prediction bands are huge!!
+
+for metropolitan police:
+
+```{r}
+i <- 30
+cal_new <- df_cal %>% filter(police_force == levels(police_force)[i]) %>%
+  dplyr::select(police_force,year,day,day_of_year,n)
+# this shoulc contain all the days ot just those i crash change, for this ex ok
+# but for small police forces not good
+pred_cal <- predict(gam_train, cal_new, type = "response")
+
+diff <- matrix((cal_new$n - pred_cal),byrow = F,nrow = 365)
+ab_diff <- abs(diff)
+
+l <-  dim(diff)[2]
+alpha <- 0.1
+ncm = apply(ab_diff,1,max)
+x = 1:365
+line_integral = function(x, y) {
+  dx = diff(x)
+  end = length(y)
+  my = (y[1:(end - 1)] + y[2:end]) / 2
+  sum(dx *my)
+} 
+den = line_integral(x, ncm)
+s = ncm/den
+ncs <- apply(ab_diff/s,1,max)
+ncs_sort = c(sort(ncs))
+
+k = ncs_sort[ceiling((l/2 + 1)*(1-alpha))]
+```
+
+```{r}
+cal_test <- df_test %>% filter(police_force == levels(police_force)[i]) %>%
+  dplyr::select(n)
+
+prediction <- res %>% filter(police_force==levels(police_force)[i]) %>% dplyr::select(p)
+
+df_plot <- data.frame(n = cal_test$n,pred = prediction$p, ymax = prediction$p + (k*s),
+                      ymin = pmax( prediction$p -(k*s), rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+  
+```
+
+we need to generate the data 
+
+doing this in a more principled way
+
+we need to create the dataset in a way that they cotain all of the days and a zero if no crashes happened in that day:
+
+```{r}
+all_dates <- unique(full_collisions$date)
+all_police_forces <- unique(full_collisions$police_force)
+
+full_combinations <- expand.grid(date = all_dates, police_force = all_police_forces)
+
+crashes_per_day_police <- full_combinations %>%
+  left_join(full_collisions %>% group_by(date, police_force) %>% summarize(number_of_crashes = n()),
+            by = c("date", "police_force")) %>%
+  replace_na(list(number_of_crashes = 0))
+
+glimpse(crashes_per_day_police)
+```
+
+```{r}
+crashes_per_day_police <- crashes_per_day_police %>% mutate(day_of_year = yday(date),
+                                                            day = factor(wday(date)),year = year(date))
+```
+
+removing the 29 of february for dimensioality problems in the vectors below
+
+```{r}
+crashes_per_day_police <- crashes_per_day_police %>% filter(!(month(date)==2 & day(date)==29))
+```
+
+```{r}
+df_train <- crashes_per_day_police %>% filter(year <=2016)
+df_cal <- crashes_per_day_police %>% filter(year > 2016) %>% filter(year < 2022)
+df_test <- crashes_per_day_police %>% filter(year == 2022)
+```
+
+```{r}
+gam_train <- bam(number_of_crashes ~ day + year +
+                                  s(day_of_year,k = 53, bs = "cr") + 
+                       s(police_force, bs = "re"), 
+                data = df_train, family=quasipoisson(), method='REML')
+```
+
+```{r}
+summary(gam_train)
+```
+
+```{r}
+b <- getViz(gam_train)
+```
+
+```{r}
+print(plot(b, allTerms = T), pages = 1)
+```
+
+1 is sunday here
+
+```{r}
+check(b)
+```
+
+this is the best so far.
+
+we now need to build the predictors and the bands manually
+
+```{r}
+preds <- predict(gam_train, df_cal, type = "response")
+res <- cbind(df_cal,preds)
+
+res_cal <- res %>% arrange(police_force,date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+res_train <- cbind(df_train,preds = predict(gam_train, df_train, type = "response")) %>%
+  arrange(police_force,date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+```
+
+we now nee to compute the modulation functions and the k
+
+```{r}
+n_pol <- length(levels(crashes_per_day_police$police_force))
+
+m = 12
+l = 5
+alpha = 0.1
+kS = matrix(nrow = n_pol,ncol = 365)
+
+x = 1:365
+line_integral = function(x, y) {
+  dx = diff(x)
+  end = length(y)
+  my = (y[1:(end - 1)] + y[2:end]) / 2
+  sum(dx *my)
+} 
+
+ceiling((m+1)*(1-alpha))
+#we use the largest value for gamma
+# H1 = I1
+
+for(i in 1:n_pol){
+  ad <- res_train %>% filter(police_force == levels(police_force)[i]) %>%
+  dplyr::select(absdiff)
+  a_mat <- matrix(ad$absdiff,byrow = F,nrow = 365)
+  ncm = apply(a_mat,1,max)
+  den = line_integral(x, ncm)
+  s = ncm/den
+  ncs <- apply(ab_diff/s,1,max)
+  ncs_sort = c(sort(ncs))
+  k = ncs_sort[ceiling((l/2 + 1)*(1-alpha))]
+  kS[i,] = k*s
+}
+```
+
+```{r}
+preds <- predict(gam_train, df_test, type = "response")
+df_test_res <- cbind(df_test,preds)
+```
+
+```{r}
+i <- 50
+
+df_filtered <- df_test_res %>% filter(police_force == levels(police_force)[i]) %>%
+  arrange(day_of_year)
+
+df_plot <- data.frame(n = df_filtered$number_of_crashes,pred = df_filtered$preds, 
+                      ymax = df_filtered$preds + kS[i,],
+                      ymin = pmax( df_filtered$preds - kS[i,], rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+
+```
+
+this are not great
+
+```{r}
+i <- 12
+
+df_filtered <- df_test_res %>% filter(police_force == levels(police_force)[i]) %>%
+  arrange(day_of_year)
+
+df_plot <- data.frame(n = df_filtered$number_of_crashes,pred = df_filtered$preds, 
+                      ymax = df_filtered$preds + kS[i,],
+                      ymin = pmax( df_filtered$preds - kS[i,], rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+
+```
+
+
+```{r}
+i <- 30
+
+df_filtered <- df_test_res %>% filter(police_force == levels(police_force)[i]) %>%
+  arrange(day_of_year)
+
+df_plot <- data.frame(n = df_filtered$number_of_crashes,pred = df_filtered$preds, 
+                      ymax = df_filtered$preds + kS[i,],
+                      ymin = pmax( df_filtered$preds - kS[i,], rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+
+```
+
+clearly something is wrong,
+I think is the fact that we cannodd do this for mixed models since we don't have 
+the exchagnability assumption satisfied
+
+we should fit a model for each police force separately.
+
+doing it for Midlands.
+
+```{r}
+i <- 50
+df_train_mid <- crashes_per_day_police %>% filter(year <=2016) %>% 
+  filter(police_force == levels(police_force)[i])
+df_cal_mid <- crashes_per_day_police %>% filter(year > 2016) %>% filter(year < 2022)%>% 
+  filter(police_force == levels(police_force)[i])
+df_test_mid <- crashes_per_day_police %>% filter(year == 2022)%>% 
+  filter(police_force == levels(police_force)[i])
+```
+
+```{r}
+gam_train_mid <- bam(number_of_crashes ~ day + year +
+                                  s(day_of_year,k = 53, bs = "cr"), 
+                data = df_train_mid, family=quasipoisson(), method='REML')
+```
+
+```{r}
+summary(gam_train_mid)
+```
+
+```{r}
+b_mid <- getViz(gam_train_mid)
+```
+
+```{r}
+print(plot(b_mid, allTerms = T), pages = 1)
+```
+
+1 is sunday here
+
+```{r}
+check(b_mid)
+```
+
+```{r}
+res_train_mid <- cbind(df_train_mid,preds = predict(gam_train_mid, df_train_mid, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+
+res_cal_mid <- cbind(df_cal_mid,preds = predict(gam_train_mid, df_cal_mid, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+```
+
+we now nee to compute the modulation functions and the k
+
+```{r}
+m = 12
+l = 5
+alpha = 0.1
+kS_mid = c()
+
+x = 1:365
+line_integral = function(x, y) {
+  dx = diff(x)
+  end = length(y)
+  my = (y[1:(end - 1)] + y[2:end]) / 2
+  sum(dx *my)
+} 
+
+ad <- res_train_mid %>% dplyr::select(absdiff)
+a_mat <- matrix(ad$absdiff,byrow = F,nrow = 365)
+ncm = apply(a_mat,1,max)
+den = line_integral(x, ncm)
+s = ncm/den
+ncs <- apply(ab_diff/s,1,max)
+ncs_sort = c(sort(ncs))
+k = ncs_sort[ceiling((l/2 + 1)*(1-alpha))]
+kS_mid = k*s
+```
+
+```{r}
+preds_mid <- predict(gam_train_mid, df_test_mid, type = "response")
+df_test_res <- cbind(df_test_mid,preds_mid) %>% arrange(day_of_year)
+```
+
+```{r}
+df_plot <- data.frame(n = df_test_res$number_of_crashes,pred = df_test_res$preds, 
+                      ymax = df_test_res$preds + kS[i,],
+                      ymin = pmax( df_test_res$preds - kS[i,], rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+
+```
+
+the results still are not good, probably due to the model that is less powerful
+
+tryig for other police forces:
+
+metropolitan police
+
+```{r}
+i <- 30
+df_train_mid <- crashes_per_day_police %>% filter(year <=2016) %>% 
+  filter(police_force == levels(police_force)[i])
+df_cal_mid <- crashes_per_day_police %>% filter(year > 2016) %>% filter(year < 2022)%>% 
+  filter(police_force == levels(police_force)[i])
+df_test_mid <- crashes_per_day_police %>% filter(year == 2022)%>% 
+  filter(police_force == levels(police_force)[i])
+```
+
+```{r}
+gam_train_mid <- bam(number_of_crashes ~ day + year +
+                                  s(day_of_year,k = 53, bs = "cr"), 
+                data = df_train_mid, family=quasipoisson(), method='REML')
+```
+
+```{r}
+summary(gam_train_mid)
+```
+
+```{r}
+b_mid <- getViz(gam_train_mid)
+```
+
+```{r}
+print(plot(b_mid, allTerms = T), pages = 1)
+```
+
+1 is sunday here
+
+```{r}
+check(b_mid)
+```
+
+```{r}
+res_train_mid <- cbind(df_train_mid,preds = predict(gam_train_mid, df_train_mid, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+
+res_cal_mid <- cbind(df_cal_mid,preds = predict(gam_train_mid, df_cal_mid, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+```
+
+we now nee to compute the modulation functions and the k
+
+```{r}
+m = 12
+l = 5
+alpha = 0.1
+kS_mid = c()
+
+x = 1:365
+line_integral = function(x, y) {
+  dx = diff(x)
+  end = length(y)
+  my = (y[1:(end - 1)] + y[2:end]) / 2
+  sum(dx *my)
+} 
+
+ad <- res_train_mid %>% dplyr::select(absdiff)
+a_mat <- matrix(ad$absdiff,byrow = F,nrow = 365)
+ncm = apply(a_mat,1,max)
+den = line_integral(x, ncm)
+s = ncm/den
+ncs <- apply(ab_diff/s,1,max)
+ncs_sort = c(sort(ncs))
+k = ncs_sort[ceiling((l/2 + 1)*(1-alpha))]
+kS_mid = k*s
+```
+
+```{r}
+preds_mid <- predict(gam_train_mid, df_test_mid, type = "response")
+df_test_res <- cbind(df_test_mid,preds_mid) %>% arrange(day_of_year)
+```
+
+```{r}
+df_plot <- data.frame(n = df_test_res$number_of_crashes,pred = df_test_res$preds, 
+                      ymax = df_test_res$preds + kS[i,],
+                      ymin = pmax( df_test_res$preds - kS[i,], rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+
+```
+
+
+for midlands using an alternating year set:
+
+```{r}
+i <- 50
+train_years <- ceiling(seq(2005,2021,by = 1.5))
+cal_years <- seq(2006,2021,3)
+
+df_train_mid2 <- crashes_per_day_police %>% filter(year %in% train_years) %>% 
+  filter(police_force == levels(police_force)[i])
+df_cal_mid2 <- crashes_per_day_police %>% filter(year %in% cal_years) %>% 
+  filter(police_force == levels(police_force)[i])
+df_test_mid2 <- crashes_per_day_police %>% filter(year == 2022)%>% 
+  filter(police_force == levels(police_force)[i])
+```
+
+```{r}
+gam_train_mid2 <- bam(number_of_crashes ~ day + year +
+                                  s(day_of_year,k = 53, bs = "cr"), 
+                data = df_train_mid2, family=quasipoisson(), method='REML')
+```
+
+```{r}
+summary(gam_train_mid2)
+```
+
+```{r}
+b_mid2 <- getViz(gam_train_mid2)
+```
+
+```{r}
+print(plot(b_mid2, allTerms = T), pages = 1)
+```
+
+1 is sunday here
+
+```{r}
+check(b_mid2)
+```
+
+```{r}
+res_train_mid2 <- cbind(df_train_mid2,preds = predict(gam_train_mid2, df_train_mid2, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+
+res_cal_mid2 <- cbind(df_cal_mid2,preds = predict(gam_train_mid2, df_cal_mid2, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+```
+
+we now nee to compute the modulation functions and the k
+
+```{r}
+m = 12
+l = 5
+alpha = 0.1
+kS_mid = c()
+
+x = 1:365
+line_integral = function(x, y) {
+  dx = diff(x)
+  end = length(y)
+  my = (y[1:(end - 1)] + y[2:end]) / 2
+  sum(dx *my)
+} 
+
+ad <- res_train_mid2 %>% dplyr::select(absdiff)
+a_mat <- matrix(ad$absdiff,byrow = F,nrow = 365)
+ncm = apply(a_mat,1,max)
+den = line_integral(x, ncm)
+s = ncm/den
+ncs <- apply(ab_diff/s,1,max)
+ncs_sort = c(sort(ncs))
+k = ncs_sort[ceiling((l/2 + 1)*(1-alpha))]
+kS_mid = k*s
+```
+
+```{r}
+preds_mid2 <- predict(gam_train_mid2, df_test_mid2, type = "response")
+df_test_res2 <- cbind(df_test_mid2,preds_mid2) %>% arrange(day_of_year)
+```
+
+```{r}
+df_plot <- data.frame(n = df_test_res2$number_of_crashes,pred = df_test_res2$preds, 
+                      ymax = df_test_res2$preds + kS[i,],
+                      ymin = pmax( df_test_res2$preds - kS[i,], rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+
+```
+
+this is definitely better
+
+doing the same for metropolitan police
+
+```{r}
+i <- 30
+train_years <- ceiling(seq(2005,2021,by = 1.5))
+cal_years <- seq(2006,2021,3)
+
+df_train_mid2 <- crashes_per_day_police %>% filter(year %in% train_years) %>% 
+  filter(police_force == levels(police_force)[i])
+df_cal_mid2 <- crashes_per_day_police %>% filter(year %in% cal_years) %>% 
+  filter(police_force == levels(police_force)[i])
+df_test_mid2 <- crashes_per_day_police %>% filter(year == 2022)%>% 
+  filter(police_force == levels(police_force)[i])
+```
+
+```{r}
+gam_train_mid2 <- bam(number_of_crashes ~ day + year +
+                                  s(day_of_year,k = 53, bs = "cr"), 
+                data = df_train_mid2, family=quasipoisson(), method='REML')
+```
+
+```{r}
+summary(gam_train_mid2)
+```
+
+```{r}
+b_mid2 <- getViz(gam_train_mid2)
+```
+
+```{r}
+print(plot(b_mid2, allTerms = T), pages = 1)
+```
+
+1 is sunday here
+
+```{r}
+check(b_mid2)
+```
+
+```{r}
+res_train_mid2 <- cbind(df_train_mid2,preds = predict(gam_train_mid2, df_train_mid2, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+
+res_cal_mid2 <- cbind(df_cal_mid2,preds = predict(gam_train_mid2, df_cal_mid2, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+```
+
+we now nee to compute the modulation functions and the k
+
+```{r}
+m = 12
+l = 5
+alpha = 0.1
+kS_mid = c()
+
+x = 1:365
+line_integral = function(x, y) {
+  dx = diff(x)
+  end = length(y)
+  my = (y[1:(end - 1)] + y[2:end]) / 2
+  sum(dx *my)
+} 
+
+ad <- res_train_mid2 %>% dplyr::select(absdiff)
+a_mat <- matrix(ad$absdiff,byrow = F,nrow = 365)
+ncm = apply(a_mat,1,max)
+den = line_integral(x, ncm)
+s = ncm/den
+ncs <- apply(ab_diff/s,1,max)
+ncs_sort = c(sort(ncs))
+k = ncs_sort[ceiling((l/2 + 1)*(1-alpha))]
+kS_mid = k*s
+```
+
+```{r}
+preds_mid <- predict(gam_train_mid2, df_test_mid2, type = "response")
+df_test_res2 <- cbind(df_test_mid2,preds_mid) %>% arrange(day_of_year)
+```
+
+```{r}
+df_plot <- data.frame(n = df_test_res2$number_of_crashes,pred = df_test_res2$preds, 
+                      ymax = df_test_res2$preds + kS[i,],
+                      ymin = pmax( df_test_res2$preds - kS[i,], rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+
+```
+
+ok this is working
+
+
