@@ -1,0 +1,123 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "Permutational ANOVA"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_section: true
+date: "2023-12-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center'
+    #fig.path = 'output/',
+    #fig.height = 6,
+    #fig.width = 12
+)
+```
+
+
+```{r cars}
+library(tidyverse)
+library(mgcv)
+library(splines)
+library(lubridate)
+library(ggplot2)
+library(conformalInference)
+library(knitr)
+library(sp)
+library(rgl)
+library(splines)
+library(pbapply)
+library(devtools)
+library(visreg)
+library(mgcViz)
+```
+
+
+
+```{r pressure, echo=FALSE}
+load("~/Documents/GitHub/NPS_RoadTrafficCollision/clean data/full_casualties.RData")
+glimpse(full_casualties)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+```{r}
+g <-  nlevels(full_casualties$casualty_class)
+n <- dim(full_casualties)[1]
+
+head(full_casualties$casualty_class)
+head(full_casualties$casualty_severity)
+table(full_casualties$casualty_class)
+table(full_casualties$casualty_severity)
+```
+
+```{r}
+full_casualties$casualty_severity <- factor(full_casualties$casualty_severity, levels = c("Fatal", "Serious", "Slight"), labels = c(1, 2, 3))
+full_casualties$casualty_severity <- as.numeric(full_casualties$casualty_severity)
+
+
+plot(full_casualties$casualty_class, full_casualties$casualty_severity, xlab='treat',col=rainbow(g),main='Original Data')
+
+anova_result <- aov(casualty_severity ~ casualty_class, data = full_casualties)
+summary(anova_result)
+
+```
+
+
+```{r}
+B = 1e3
+seed = 2044
+T_stat <- numeric(B) 
+n <- dim(full_casualties)[1]
+pb = progress::progress_bar$new(total = B, format = " Processing [:bar] :percent eta: :eta")
+for(perm in 1:B){
+  # Permutation:
+  permutation <- sample(1:n)
+  casualty_severity_perm <- full_casualties$casualty_severity[permutation]
+  casualty_class_perm <- aov( casualty_severity_perm~ full_casualties$casualty_class)
+  
+  # Test statistic:
+  T_stat[perm] <- summary(casualty_class_perm)[[1]][1,4]
+  pb$tick()
+}
+```
+```{r}
+save(T_stat, file="severity_perm.Rdata")
+```
+
+
+```{r}
+T0 <- summary(anova_result)[[1]][1,4]  # extract the test statistic
+T0
+quartz()
+hist(T_stat)
+abline(v=T0,col=3,lwd=2)
+```
+```{r}
+p_val <- sum(T_stat>=T0)/B
+p_val
+```
+
+
+```{r}
+plot(ecdf(T_stat))
+abline(v=T0)
+```
+
+
