@@ -1,0 +1,182 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "Expolratory data analysis collisions data"
+author:
+    - "Valeria Iapaolo"
+    - "Oswald Jesus Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_section: true
+date: "2023-11-10"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(patchwork)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/full_casualties.RData")
+```
+
+```{r}
+glimpse(full_casualties)
+```
+
+eda with a focus on severity:
+
+## casualty_severity:
+
+```{r}
+full_casualties %>% ggplot(aes(casualty_severity)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## accident_year:
+
+```{r}
+full_casualties %>% ggplot(aes(as.factor(accident_year))) + geom_bar(aes(fill = casualty_severity)) + 
+  scale_x_discrete(guide = guide_axis(angle = 15)) 
+```
+
+fixing the scale to see the proportions:
+
+```{r}
+full_casualties %>% ggplot(aes(y = accident_year, fill = casualty_severity)) + 
+  geom_bar(position = "fill")
+```
+
+this is a downward trend
+
+## casualty_class:
+
+```{r}
+p1 <- full_casualties %>% ggplot(aes(casualty_class)) + geom_bar(aes(fill = casualty_severity)) + theme(legend.position = "none")
+p2 <- full_casualties %>% ggplot(aes(x = casualty_class, fill = casualty_severity)) + 
+  geom_bar(position = "fill") + theme(legend.position = "none")
+p1 + p2
+```
+
+
+## sex_of_casualty:
+
+```{r}
+p1 <- full_casualties %>% ggplot(aes(sex_of_casualty)) + geom_bar(aes(fill = casualty_severity)) + theme(legend.position = "none") + scale_x_discrete(guide = guide_axis(angle = 15))
+p2 <- full_casualties %>% ggplot(aes(x = sex_of_casualty, fill = casualty_severity)) + 
+  geom_bar(position = "fill") + theme(legend.position = "none") + 
+  scale_x_discrete(guide = guide_axis(angle = 15))
+p1 + p2
+```
+
+## age_band_of_casualty:
+
+```{r}
+full_casualties %>% ggplot(aes(age_band_of_casualty)) + geom_bar(aes(fill = casualty_severity)) + 
+  scale_x_discrete(guide = guide_axis(angle = 15))
+```
+
+```{r}
+full_casualties %>% ggplot(aes(age_band_of_casualty)) + 
+  geom_bar(aes(fill = casualty_severity),position = "fill") + 
+  scale_x_discrete(guide = guide_axis(angle = 15))
+```
+
+
+## casualty_class:
+
+```{r}
+p1 <- full_casualties %>% ggplot(aes(casualty_class)) + geom_bar(aes(fill = casualty_severity)) + theme(legend.position = "none") + scale_x_discrete(guide = guide_axis(angle = 15))
+p2 <- full_casualties %>% ggplot(aes(x = casualty_class, fill = casualty_severity)) + 
+  geom_bar(position = "fill") + theme(legend.position = "none") + 
+  scale_x_discrete(guide = guide_axis(angle = 15))
+p1 + p2
+```
+
+## pedestrian_location:
+
+```{r}
+full_casualties %>%  filter(pedestrian_location != "Not a Pedestrian") %>% ggplot(aes(pedestrian_location)) + geom_bar(aes(fill = casualty_severity)) + 
+  scale_x_discrete(guide = guide_axis(angle = 70)) + theme(legend.position = "none")
+```
+
+```{r}
+full_casualties %>%  filter(pedestrian_location != "Not a Pedestrian") %>% ggplot(aes(pedestrian_location)) + geom_bar(aes(fill = casualty_severity),position = "fill") + 
+  scale_x_discrete(guide = guide_axis(angle = 70)) + theme(legend.position = "none",axis.text.x=element_blank())
+```
+
+## pedestrian_movement:
+
+```{r}
+levels(full_casualties$pedestrian_movement)
+```
+
+
+```{r}
+full_casualties %>%  filter(pedestrian_movement != "Not a Pedestrian") %>% ggplot(aes(pedestrian_movement)) + geom_bar(aes(fill = casualty_severity)) + 
+  scale_x_discrete(guide = guide_axis(angle = 70)) + theme(legend.position = "none",axis.text.x=element_blank())
+```
+
+```{r}
+full_casualties %>%  filter(pedestrian_movement != "Not a Pedestrian") %>% ggplot(aes(pedestrian_movement)) + geom_bar(aes(fill = casualty_severity),position = "fill") + theme(legend.position = "none",axis.text.x=element_blank())
+```
+
+## car_passenger:
+
+```{r}
+full_casualties %>% ggplot(aes(car_passenger)) + geom_bar(aes(fill = casualty_severity)) + 
+  scale_x_discrete(guide = guide_axis(angle =45))
+```
+
+this could be interesting for the car manufacturer
+
+## bus_or_coach_passenger:
+
+```{r}
+full_casualties %>% filter(bus_or_coach_passenger != "Not a bus or coach passenger") %>% ggplot(aes(bus_or_coach_passenger)) + geom_bar(aes(fill = casualty_severity)) + 
+  scale_x_discrete(guide = guide_axis(angle = 15))
+```
+
+```{r}
+full_casualties %>% ggplot(aes(bus_or_coach_passenger)) + geom_bar(aes(fill = casualty_severity),position = "fill") + 
+  scale_x_discrete(guide = guide_axis(angle = 15)) + theme(legend.position = "none")
+```
+
+## casualty_type:
+
+```{r}
+full_casualties %>% ggplot(aes(casualty_type)) + geom_bar(aes(fill = casualty_severity)) + 
+  scale_x_discrete(guide = guide_axis(angle = 60)) + theme(legend.position = "none")
+```
+
+```{r}
+full_casualties %>% ggplot(aes(casualty_type)) + geom_bar(aes(fill = casualty_severity),position = "fill")  + theme(legend.position = "none",axis.text.x=element_blank())
+```
+
+this should be investigated, we need to make more informad categories
+
+## casualty_home_area_type
+
+```{r}
+full_casualties %>% ggplot(aes(casualty_home_area_type)) + geom_bar(aes(fill = casualty_severity)) + 
+  scale_x_discrete(guide = guide_axis(angle = 15)) + theme(legend.position = "none")
+```

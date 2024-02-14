@@ -1,0 +1,199 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "Functional permutation testing dayly data"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+    
+output: html_notebook
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r libraries inclusions, include=FALSE}
+library(tidyverse)
+library(roahd)
+library(fdacluster)
+library(fdatest)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/functional/df_hour.RData")
+```
+
+```{r}
+fd_day <- fData(1:24,as_tibble(df_hour[,2:25]))
+```
+
+```{r}
+plot(fd_day,lwd = 1,xlab = "day",ylab = "dayly number of crashes",main = "hourly crashes in each week")
+```
+
+```{r}
+hours <- 1:24
+n <- fd_day$N
+x <- t(matrix(rep(hours,n),24,n))
+y <- as.matrix(df_hour[,2:25])
+```
+
+```{r}
+k <- 2
+system.time(
+fdakma0der <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeds = c(4620,6524),
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 20L
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der)
+```
+
+```{r}
+matplot(t(fdakma0der$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:k,lwd = 3)
+```
+
+```{r}
+i1 <- which(fdakma0der$memberships==1)
+i2 <- which(fdakma0der$memberships==2)
+
+n <- dim(df_hour)[1]
+indexes_plot <- c(i1[sample(length(i1),75)],i2[sample(length(i2),75)])
+nplots <- 150
+unicurves <- fdakma0der$original_curves[indexes_plot, 1, ]
+grids <- matrix(rep(1:24,nplots),nrow = nplots, ncol = 24,byrow = TRUE)
+memberships <- fdakma0der$memberships[indexes_plot]
+
+wrangled_data <- tibble::tibble(
+      grid = purrr::array_tree(grids, margin = 1),
+      value = purrr::array_tree(unicurves, margin = 1),
+      membership = memberships,
+      curve_id = 1:nplots
+    ) |>
+      tidyr::unnest(cols = c(.data$grid, .data$value)) |> 
+  dplyr::bind_rows() |>
+    dplyr::mutate(
+      membership = as.factor(.data$membership),
+      curve_id = as.factor(.data$curve_id),
+    )
+
+```
+
+```{r}
+P1 <- wrangled_data |>
+      ggplot2::ggplot(ggplot2::aes(
+        x = .data$grid,
+        y = .data$value,
+        color = .data$membership,
+        group = .data$curve_id
+      )) +
+      ggplot2::geom_line() +
+      ggplot2::facet_wrap(ggplot2::vars(.data$membership)
+      ) +
+      ggplot2::labs(
+        x = "hour",
+        y = "number of collisions per hour"
+      ) +
+      ggplot2::theme(legend.position = "none") 
+P1
+```
+
+```{r}
+P2 <- wrangled_data |>
+      ggplot2::ggplot(ggplot2::aes(
+        x = .data$grid,
+        y = .data$value,
+        color = .data$membership,
+        group = .data$curve_id
+      )) +
+      ggplot2::geom_line() +
+      ggplot2::labs(
+        x = "hour",
+        y = "number of collisions per hour"
+      ) +
+      ggplot2::theme(legend.position = "none")
+
+P2
+
+```
+
+
+this is a clear distinction between working days and holydays.
+
+I start with a permutation test on the global curves:
+
+```{r}
+i1 <- which(fdakma0der$memberships==1)
+n1 <- length(i1)
+
+i2 <- which(fdakma0der$memberships==2)
+n2 <- length(i2)
+```
+
+```{r}
+seed=7122023
+B=10000
+```
+
+start by comparing group 1 and 2:
+
+```{r}
+aug_df=y
+n= n1 + n2 
+
+meandiff=(colMeans(y[i1,])-colMeans(y[i2,]))
+plot(meandiff,type = 'l')
+T0=sum(meandiff^2)
+T0
+```
+
+```{r}
+T0_perm=numeric(B)
+
+for(perm in 1:B){
+  permutation <- sample(n)
+  df_perm=aug_df[permutation,]
+  perm_1 = df_perm[1:n1,] 
+  perm_2 = df_perm[(n1+1):n,] 
+  T0_perm[perm]=sum(((colMeans(perm_1)-colMeans(perm_2)))^2)
+}
+
+sum(T0_perm >= T0)/B
+
+hist(T0_perm,xlim = c(0,1.2*T0))
+abline(v=T0,col='green')
+```
+
+this are statistically different.
+
+we now move to a local test.
+
+we use the interval wise procedure, so we control the interval-wise error rate
+
+between clusters 1 an 2
+
+```{r}
+tst=IWT2(y[i1,],y[i2,],B=1000)
+plot(tst)
+```
+
+as expected the difference is both in the evening and in the morning.

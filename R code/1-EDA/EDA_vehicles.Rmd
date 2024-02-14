@@ -1,0 +1,190 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "Expolratory data analysis collisions data"
+author:
+    - "Valeria Iapaolo"
+    - "Oswald Jesus Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_section: true
+date: "2023-11-10"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(patchwork)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/full_vehicles.RData")
+```
+
+```{r}
+glimpse(full_vehicles)
+```
+
+## vehicle type:
+
+```{r}
+full_vehicles %>% ggplot(aes(vehicle_type)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+there is a large number of accidents with bikes and motorcyle, which could be interesting to highlight
+
+## towing_and_articulation:
+
+```{r}
+full_vehicles %>% ggplot(aes(towing_and_articulation)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+probably not very usefull
+
+## vehicle_manoeuvre
+
+```{r}
+full_vehicles %>% ggplot(aes(vehicle_manoeuvre)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+a lot more turning right than left, makes sense sicne they drive on the opposite side of the road
+
+## vehicle_direction_from:
+
+```{r}
+full_vehicles %>% ggplot(aes(vehicle_direction_from)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## vehicle_direction_to:
+
+```{r}
+full_vehicles %>% ggplot(aes(vehicle_direction_to)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+don't know why south east is dominant
+
+## vehicle type:
+
+```{r}
+full_vehicles %>% ggplot(aes(vehicle_type)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## vehicle_location_restricted_lane:
+
+```{r}
+full_vehicles %>% ggplot(aes(vehicle_location_restricted_lane)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 60))
+```
+
+## junction_location:
+
+```{r}
+full_vehicles %>% ggplot(aes(junction_location)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 60))
+```
+
+## skidding_and_overturning:
+
+```{r}
+full_vehicles %>% ggplot(aes(skidding_and_overturning)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## hit_object_in_carriageway:
+
+```{r}
+full_vehicles %>% ggplot(aes(hit_object_in_carriageway)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## hit_object_off_carriageway:
+
+```{r}
+full_vehicles %>% ggplot(aes(hit_object_off_carriageway)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## vehicle_leaving_carriageway:
+
+```{r}
+full_vehicles %>% ggplot(aes(vehicle_leaving_carriageway)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+## first_point_of_impact:
+
+```{r}
+full_vehicles %>% ggplot(aes(first_point_of_impact)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+i thik this could be useful, we need to match with severity by joining
+
+## vehicle_left_hand_drive:
+
+```{r}
+full_vehicles %>% ggplot(aes(vehicle_left_hand_drive)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+probably useless
+
+## journey_purpose_of_driver:
+
+```{r}
+full_vehicles %>% ggplot(aes(journey_purpose_of_driver)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## sex_of_driver:
+
+```{r}
+full_vehicles %>% ggplot(aes(sex_of_driver)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## age_band_of_driver:
+
+```{r}
+full_vehicles %>% ggplot(aes(age_band_of_driver)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+the peak is not at the young, we would need to factor in the distrivution of the population
+
+## propulsion_code:
+
+```{r}
+full_vehicles %>% ggplot(aes(propulsion_code)) + geom_bar() + 
+  scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## age_of_vehicle:
+
+```{r}
+full_vehicles %>% ggplot(aes(age_of_vehicle)) + geom_histogram(bins = 20) + xlim(c(1,20))
+```
+

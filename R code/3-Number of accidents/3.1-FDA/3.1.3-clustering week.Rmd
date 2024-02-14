@@ -1,0 +1,550 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "Functional clustering monthly data"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+    
+output: html_notebook
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r libraries inclusions, include=FALSE}
+library(tidyverse)
+library(roahd)
+#library(fda)
+library(fdacluster)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/functional/df_week.RData")
+```
+
+first we start with outlier detection in the functional case
+
+```{r}
+fd_week <- fData(1:7,as_tibble(df_week[,3:9]))
+```
+
+```{r}
+plot(fd_week,lwd = 3,xlab = "day",ylab = "dayly number of crashes",main = "dayly crashes in each week")
+```
+
+functional bagplot:
+
+```{r}
+week_fbagplot <- fbplot(fd_week, main="Magnitude outliers weekly data")
+```
+
+the default F is:
+
+```{r}
+week_fbagplot$Fvalue
+```
+
+
+no outliers found
+
+```{r}
+df_week[week_fbagplot$ID_outliers,1:2]
+```
+
+
+we need to remove the weeks that cause problems witth 0 (1,52,53)
+
+```{r}
+df_week2 <- df_week %>% filter(week_of_year %in% 2:51)
+fd_week2 <- fData(1:7,as_tibble(df_week2[,3:9]))
+```
+
+```{r}
+week_fbagplot2 <- fbplot(fd_week2, main="Magnitude outliers week data",
+                                  adjust = list( N_trials = 20,trial_size = fd_week2$N,
+                                                 VERBOSE = TRUE ))
+```
+
+the chosen F value is:
+
+```{r}
+week_fbagplot2$Fvalue
+```
+
+the outlying years are:
+
+```{r}
+df_week2[week_fbagplot2$ID_outliers,1:2]
+```
+
+first years ando covid year
+
+outiliergram:
+
+```{r}
+invisible(out_week<- outliergram(fd_week,adjust = F,lwd = 3,display = F))
+```
+
+the found outliers are:
+
+```{r}
+df_week[out_week$ID_outliers,1:2]
+```
+
+the plot of the original function is not working.
+
+adjusting the F:
+
+```{r}
+out_week <- outliergram(fd_week,lwd = 3,adjust = list( N_trials = 20,trial_size = 8*fd_week$N,
+                                                 VERBOSE = TRUE ),display = FALSE)
+```
+
+```{r}
+out_week$Fvalue
+```
+
+nothing changed, same outliers detected.
+
+```{r}
+df_week[out_week$ID_outliers,1:2]
+```
+
+plotting in the old way.
+
+```{r}
+par(mfrow=c(1,2))
+plot(fd_week[out_week$ID_outliers,],lwd = 1,main = "outliers",col = 2)
+plot(fd_week[-out_week$ID_outliers,],lwd = 1,main = "non outliers",col = 3)
+```
+
+trying to remove the weeks with the zeros:
+
+```{r}
+week2_fbagplot <- fbplot(fd_week2, main="Magnitude outliers weekly data")
+```
+
+the default F is:
+
+```{r}
+week2_fbagplot$Fvalue
+```
+
+no outliers found
+
+```{r}
+df_week[week2_fbagplot$ID_outliers,1:2]
+```
+
+```{r}
+week_fbagplot2 <- fbplot(fd_week2, main="Magnitude outliers week data",
+                                  adjust = list( N_trials = 20,trial_size = fd_week2$N,
+                                                 VERBOSE = TRUE ))
+```
+
+the chosen F value is:
+
+```{r}
+week_fbagplot2$Fvalue
+```
+
+the outlying years are:
+
+```{r}
+df_week2[week_fbagplot2$ID_outliers,1:2]
+```
+
+first years ando covid year
+
+outiliergram:
+
+```{r}
+invisible(out_week2<- outliergram(fd_week2,adjust = F,lwd = 3,display = F))
+```
+
+the found outliers are:
+
+```{r}
+df_week[out_week$ID_outliers,1:2]
+```
+
+the plot of the original function is not working.
+
+adjusting the F:
+
+```{r}
+out_week2 <- outliergram(fd_week2,lwd = 3,adjust = list( N_trials = 20,trial_size = 8*fd_week$N,
+                                                 VERBOSE = TRUE ),display = FALSE)
+```
+
+```{r}
+out_week2$Fvalue
+```
+
+nothing changed, same outliers detected.
+
+```{r}
+df_week[out_week2$ID_outliers,1:2]
+```
+
+plotting in the old way.
+
+```{r}
+par(mfrow=c(1,2))
+plot(fd_week[out_week2$ID_outliers,],lwd = 1,main = "outliers",col = 2)
+plot(fd_week[-out_week2$ID_outliers,],lwd = 1,main = "non outliers",col = 3)
+```
+
+we can do some clustering, no need to allign the data this time:
+
+```{r}
+days <- 1:7
+n <- fd_week$N
+x <- t(matrix(rep(days,n),7,n))
+y <- as.matrix(df_week[,3:9])
+```
+
+tryig k = 3
+
+```{r}
+k <- 3
+system.time(
+fdakma0der <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeds = sample(1:n,k),
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 12
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der,type = "amplitude")
+```
+
+selecting the number of clusters:
+
+```{r}
+n_sub <- 50
+sub_id <- sample(1:n,n_sub,replace = FALSE)
+x_sub <- x[sub_id,]
+y_sub <- y[sub_id,]
+
+system.time(invisible(comparison_kmeans <- compare_caps(
+  x_sub,
+  y_sub,
+  n_clusters = 2:5,
+  metric = "pearson",
+  clustering_method = "kmeans",
+  warping_class = "none",
+  centroid_type = "mean",
+  cluster_on_phase = FALSE
+    )
+  )
+)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "mean",lwd = 3)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "distribution")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "mean")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "distribution")
+```
+
+
+2 is probably the best, lets take a look:
+
+```{r}
+k <- 2
+system.time(
+fdakma0der <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeds = sample(1:n,k),
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 12
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der,type = "amplitude")
+```
+
+```{r}
+table(df_week[fdakma0der$memberships==1,2])
+```
+
+```{r}
+table(df_week[fdakma0der$memberships==2,2])
+```
+
+```{r}
+id1 <- which(fdakma0der$memberships==1)
+id2 <- which(fdakma0der$memberships==2)
+par(mfrow=c(1,2))
+plot(fd_week[id1[1:30],],lwd = 1,main = "cluster 1",col = 2)
+plot(fd_week[id2[1:30],],lwd = 1,main = "cluster 2",col = 3)
+```
+
+this is probably holiday vs not holiday
+
+```{r}
+n2 <- fd_week2$N
+x2 <- t(matrix(rep(days,n2),7,n2))
+y2 <- as.matrix(df_week2[,3:9])
+```
+
+```{r}
+k <- 2
+system.time(
+fdakma0der <- fdakmeans(x = x2,y = y2, n_clusters = k,
+  seeds = sample(1:n,k),
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 12
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der,type = "amplitude")
+```
+
+```{r}
+table(df_week2[fdakma0der$memberships==1,2])
+```
+
+```{r}
+table(df_week2[fdakma0der$memberships==2,2])
+```
+
+```{r}
+id1 <- which(fdakma0der$memberships==1)
+id2 <- which(fdakma0der$memberships==2)
+par(mfrow=c(1,2))
+plot(fd_week2[id1[1:30],],lwd = 1,main = "cluster 1",col = 2)
+plot(fd_week2[id2[1:30],],lwd = 1,main = "cluster 2",col = 3)
+```
+
+no difference for excluding the problematic weeks.
+
+```{r}
+k <- 3
+system.time(
+fdakma0der <- fdakmeans(x = x2,y = y2, n_clusters = k,
+  seeds = sample(1:n,k),
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 12
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der,type = "amplitude")
+```
+
+```{r}
+table(df_week2[fdakma0der$memberships==1,2])
+```
+
+```{r}
+table(df_week2[fdakma0der$memberships==2,2])
+```
+
+```{r}
+table(df_week2[fdakma0der$memberships==3,2])
+```
+
+
+```{r}
+id1 <- which(fdakma0der$memberships==1)
+id2 <- which(fdakma0der$memberships==2)
+id3 <- which(fdakma0der$memberships==3)
+par(mfrow=c(1,3))
+plot(fd_week2[id1[1:30],],lwd = 1,main = "cluster 1",col = 2)
+plot(fd_week2[id2[1:30],],lwd = 1,main = "cluster 2",col = 3)
+plot(fd_week2[id3[1:30],],lwd = 1,main = "cluster 3",col = 4)
+```
+
+2 an 3 are very similar,
+
+trying with 4
+
+```{r}
+k <- 4
+system.time(
+fdakma0der <- fdakmeans(x = x2,y = y2, n_clusters = k,
+  seeds = sample(1:n,k),
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 12
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der,type = "amplitude")
+```
+
+```{r}
+table(df_week2[fdakma0der$memberships==1,2])
+```
+
+```{r}
+table(df_week2[fdakma0der$memberships==2,2])
+```
+
+```{r}
+table(df_week2[fdakma0der$memberships==3,2])
+```
+
+```{r}
+table(df_week2[fdakma0der$memberships==4,2])
+```
+
+```{r}
+id1 <- which(fdakma0der$memberships==1)
+id2 <- which(fdakma0der$memberships==2)
+id3 <- which(fdakma0der$memberships==3)
+id4 <- which(fdakma0der$memberships==4)
+par(mfrow=c(2,2))
+plot(fd_week2[id1[1:30],],lwd = 1,main = "cluster 1",col = 2)
+plot(fd_week2[id2[1:30],],lwd = 1,main = "cluster 2",col = 3)
+plot(fd_week2[id3[1:30],],lwd = 1,main = "cluster 3",col = 4)
+plot(fd_week2[id4[1:30],],lwd = 1,main = "cluster 4",col = 5)
+```
+
+
+still better with 2.
+
+trying hierarchical clustering
+
+```{r}
+system.time(
+  hclustres <- fdahclust(
+  x = x2,
+  y = y2,
+  n_clusters = 2L,
+  warping_class = "none",
+  centroid_type = "mean",
+  metric = "pearson",
+  linkage_criterion = "complete",
+  cluster_on_phase = FALSE,
+  use_verbose = TRUE,
+  warping_options = c(0.15, 0.15),
+  maximum_number_of_iterations = 100L,
+  number_of_threads = 12L,
+  parallel_method = 0L,
+  distance_relative_tolerance = 0.001,
+  use_fence = FALSE,
+  check_total_dissimilarity = TRUE,
+  compute_overall_center = FALSE
+)
+)
+```
+
+```{r}
+autoplot(hclustres)
+```
+
+```{r}
+diagnostic_plot(hclustres)
+```
+
+```{r}
+table(hclustres$memberships)
+```
+
+```{r}
+matplot(t(hclustres$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:5,lwd = 3)
+```
+
+the pattern is always the same, division of the two clusters.
+
+k-menas on the whole dataset:
+
+```{r}
+k <- 2
+system.time(
+fdakma0der <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeds = sample(1:n,k),
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 12
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der,type = "amplitude")
+```
+
+```{r}
+table(df_week[fdakma0der$memberships==1,2])
+```
+
+```{r}
+table(df_week[fdakma0der$memberships==2,2])
+```
+
+```{r}
+id1 <- which(fdakma0der$memberships==1)
+id2 <- which(fdakma0der$memberships==2)
+par(mfrow=c(1,2))
+plot(fd_week[id1[1:30],],lwd = 1,main = "cluster 1",col = 2)
+plot(fd_week[id2[1:30],],lwd = 1,main = "cluster 2",col = 3)
+```
+
+plotting the weeks differently:
+
+```{r}
+df <- data.frame(table(df_week[fdakma0der$memberships==1,2]),table(df_week[fdakma0der$memberships==2,2])) %>% select(-week_of_year.1)
+df %>% ggplot(aes(order(week_of_year),Freq)) + geom_line()
+```
+
+this shows that group 1 are the work week, while cluster 2 are the holiays.
