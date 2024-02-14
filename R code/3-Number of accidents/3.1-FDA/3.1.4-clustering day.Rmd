@@ -1,0 +1,329 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "Functional clustering dayly data"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+    
+output: html_notebook
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r libraries inclusions, include=FALSE}
+library(tidyverse)
+library(roahd)
+#library(fda)
+library(fdacluster)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/functional/df_hour.RData")
+```
+
+first we start with outlier detection in the functional case
+
+```{r}
+fd_day <- fData(1:24,as_tibble(df_hour[,2:25]))
+```
+
+```{r}
+plot(fd_day,lwd = 3,xlab = "day",ylab = "dayly number of crashes",main = "hourly crashes in each week")
+```
+
+functional bagplot:
+
+```{r}
+hour_fbagplot <- fbplot(fd_day, main="Magnitude outliers horly data")
+```
+
+the default F is:
+
+```{r}
+hour_fbagplot$Fvalue
+```
+
+no outliers found
+
+```{r}
+df_hour[hour_fbagplot$ID_outliers,1:2]
+```
+
+observations with 0 crashes create a numerical problem, we add 1 to everithing
+
+```{r}
+df_hour2 <- df_hour + 1
+fd_day2 <- fData(1:24,as_tibble(df_hour[,2:25]))
+```
+
+```{r}
+hour_fbagplot2 <- fbplot(fd_day2, main="Magnitude outliers week data",
+                                  adjust = list( N_trials = 20,trial_size = fd_day2$N,
+                                                 VERBOSE = TRUE ))
+```
+
+this is not working, don't know why.
+
+chosing a smalle F value:
+
+```{r}
+hour_fbagplot2 <- fbplot(fd_day, main="Magnitude outliers week data",Fvalue = 0.9)
+```
+
+the chosen F value is:
+
+```{r}
+hour_fbagplot2$Fvalue
+```
+
+the outlying years are:
+
+```{r}
+df_hour[hour_fbagplot2$ID_outliers,1]
+```
+
+new yeas eve and 2 strange days : 2005-07-31	and 2009-02-11
+
+outiliergram:
+
+```{r}
+invisible(out_hour<- outliergram(fd_day,adjust = F,lwd = 3,display = F))
+```
+
+the found outliers are:
+
+```{r}
+df_hour[out_hour$ID_outliers,1]
+```
+
+the plot of the original function is not working.
+
+adjusting the F:
+
+```{r}
+out_hour <- outliergram(fd_day,lwd = 3,adjust = list( N_trials = 20,trial_size = 8*fd_day$N,
+                                                 VERBOSE = TRUE ),display = FALSE)
+```
+
+```{r}
+out_hour$Fvalue
+```
+
+nothing changed, same outliers detected.
+
+```{r}
+df_hour[out_hour$ID_outliers,1:2]
+```
+
+plotting in the old way.
+
+```{r}
+par(mfrow=c(1,2))
+plot(fd_day[out_hour$ID_outliers,],lwd = 1,main = "outliers",col = 2)
+plot(fd_day[-out_hour$ID_outliers,],lwd = 1,main = "non outliers",col = 3)
+```
+
+there are 2 typer of outtliers:
+very low crashes days,
+very high crashes day.
+
+let's do some clustering:
+
+```{r}
+hours <- 1:24
+n <- fd_day$N
+x <- t(matrix(rep(hours,n),24,n))
+y <- as.matrix(df_hour[,2:25])
+```
+
+```{r}
+k <- 3
+system.time(
+fdakma0der <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeds = sample(1:n,k),
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 12
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der)
+```
+
+```{r}
+matplot(t(fdakma0der$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:5,lwd = 3)
+```
+
+```{r}
+k <- 3
+system.time(
+fdakma0der <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeds = sample(1:n,k),
+  warping_class = "none",
+  metric = "l2",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 12
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der)
+```
+
+```{r}
+matplot(t(fdakma0der$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:5,lwd = 3)
+```
+
+pearson is the prefered metric, since it takes into account the shape as well.
+
+we need to chose the k:
+
+```{r}
+n_sub <- 50
+sub_id <- sample(1:n,n_sub,replace = FALSE)
+x_sub <- x[sub_id,]
+y_sub <- y[sub_id,]
+
+system.time(invisible(comparison_kmeans <- compare_caps(
+  x_sub,
+  y_sub,
+  n_clusters = 1:4,
+  metric = "pearson",
+  clustering_method = "kmeans",
+  warping_class = "none",
+  centroid_type = "mean",
+  cluster_on_phase = FALSE
+    )
+  )
+)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "mean",lwd = 3)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "distribution")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "mean")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "distribution")
+```
+
+it is not clear, k = 2
+
+```{r}
+k <- 2
+system.time(
+fdakma0der <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeds = sample(1:n,k),
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 20L
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der)
+```
+
+```{r}
+matplot(t(fdakma0der$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:5,lwd = 3)
+```
+
+this is a clear distinction between working days and holydays.
+
+trying k = 4
+
+```{r}
+k <- 4
+system.time(
+fdakma0der <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeds = sample(1:n,k),
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 20L
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der)
+```
+
+```{r}
+matplot(t(fdakma0der$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:5,lwd = 3)
+```
+
+it is clear that this is just a magnitude thing for the first peaks
+
+trying k = 10
+
+```{r}
+k <- 10
+system.time(
+fdakma0der <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeds = sample(1:n,k),
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 20L
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der)
+```
+
+```{r}
+matplot(t(fdakma0der$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:k,lwd = 3)
+```
+
+not much more information here, stick to 2
+
+
+
+

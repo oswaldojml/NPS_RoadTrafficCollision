@@ -1,0 +1,400 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "GAM on accident severities"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_section: true
+date: "2023-11-10"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r libraries inclusions, include=FALSE}
+library(mgcv) #to use GAM
+library(tidyverse)
+library(mgcViz)
+# library(caret)
+```
+
+
+```{r}
+load("../../clean data/full_collisions.RData")
+full_collisions_test <- full_collisions %>% filter(accident_year %in% c(2019))
+full_collisions <- full_collisions %>% filter(accident_year %in% c(2018))
+
+glimpse(full_collisions)
+```
+
+
+
+# GAM: ordered categorical family
+
+```{r}
+dat <- 
+  full_collisions %>% 
+  filter(!(light_conditions %in% c("Data missing or out of range", "Darkness - lighting unknown"))) %>%
+  # select(number_of_casualties,
+  #                  accident_severity, speed_limit, time, number_of_vehicles) %>%
+  mutate(number_of_casualties = number_of_casualties-1,
+         
+         accident_severity = case_when(
+            accident_severity == "Fatal" ~ 3,
+            accident_severity == "Serious" ~ 2,
+            accident_severity == "Slight" ~ 1),
+         
+         weekend = ifelse(day_of_week %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"), 0, 1),
+         
+         light_conditions = case_when(
+            light_conditions == "Daylight" ~ "Daylight",
+            light_conditions == "Darkness - lights lit"  ~ "Darkness - lights lit",
+            light_conditions %in% c("Darkness - lights unlit", "Darkness - no lighting") ~ "Darkness - no lights"
+            ),
+         
+         previous_accident = ifelse(carriageway_hazards == "Previous accident", 1, 0)
+         
+         
+         )
+
+dat$time <- as.numeric(dat$time)
+
+
+
+# preprocessing spatial
+geom_map <- map_data("world",region = "UK") %>% filter(!(subregion %in% c("Northern Ireland")))
+geom_map_no_islands <- geom_map %>% filter(group == 15)
+
+
+max_lat <- range(geom_map_no_islands$lat)
+max_lon <- range(geom_map_no_islands$long)
+
+
+#for plot
+geom_map_red <- geom_map %>% filter(lat <= max_lat[2] & lat >= max_lat[1] &
+                                       long <= max_lon[2] & long >= max_lon[1])
+
+# avoiding the extremes:
+dat <- dat %>% filter(latitude <= max_lat[2] & latitude >= max_lat[1] &
+                                       longitude <= max_lon[2] & longitude >= max_lon[1])
+
+
+
+# df_binned <- df_spatial %>% mutate(latitude = ceiling(10*latitude)/10,longitude = ceiling(10*longitude)/10) %>% group_by(latitude,longitude,date) %>% summarise(n = n()) %>% ungroup()
+dat
+
+```
+
+
+
+```{r}
+gam_severity_ocat <- gam(accident_severity~
+           number_of_casualties +
+           s(time, bs = "cc") +
+           weekend +
+           s(number_of_vehicles, bs = "cr", k = 5) +
+           s(speed_limit, bs='cr', k = 5) +
+           light_conditions,
+         family=ocat(R=3), data = dat)
+```
+
+
+```{r}
+summary(gam_severity_ocat)
+```
+
+
+
+```{r}
+gam.check(gam_severity_ocat)
+
+```
+
+## Testing
+
+```{r}
+dat_new <- 
+  full_collisions_test %>% filter(!(light_conditions %in% c("Data missing or out of range", "Darkness - lighting unknown"))) %>%
+  # select(number_of_casualties,
+  #                  accident_severity, speed_limit, time, number_of_vehicles) %>%
+  mutate(number_of_casualties = number_of_casualties-1,
+         
+         accident_severity = case_when(
+            accident_severity == "Fatal" ~ 3,
+            accident_severity == "Serious" ~ 2,
+            accident_severity == "Slight" ~ 1),
+         
+         weekend = ifelse(day_of_week %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"), 0, 1),
+         
+         light_conditions = case_when(
+            light_conditions == "Daylight" ~ "Daylight",
+            light_conditions == "Darkness - lights lit"  ~ "Darkness - lights lit",
+            light_conditions %in% c("Darkness - lights unlit", "Darkness - no lighting") ~ "Darkness - no lights"
+            ),
+         
+         previous_accident = ifelse(carriageway_hazards == "Previous accident", 1, 0)
+         
+         
+         )
+
+dat_new$time <- as.numeric(dat_new$time)
+
+
+
+# preprocessing spatial
+geom_map <- map_data("world",region = "UK") %>% filter(!(subregion %in% c("Northern Ireland")))
+geom_map_no_islands <- geom_map %>% filter(group == 15)
+
+
+max_lat <- range(geom_map_no_islands$lat)
+max_lon <- range(geom_map_no_islands$long)
+
+
+#for plot
+geom_map_red <- geom_map %>% filter(lat <= max_lat[2] & lat >= max_lat[1] &
+                                       long <= max_lon[2] & long >= max_lon[1])
+
+# avoiding the extremes:
+dat_new <- dat_new %>% filter(latitude <= max_lat[2] & latitude >= max_lat[1] &
+                                       longitude <= max_lon[2] & longitude >= max_lon[1])
+
+
+
+# df_binned <- df_spatial %>% mutate(latitude = ceiling(10*latitude)/10,longitude = ceiling(10*longitude)/10) %>% group_by(latitude,longitude,date) %>% summarise(n = n()) %>% ungroup()
+
+```
+
+
+
+```{r}
+pred <- predict(gam_severity_ocat, newdata = dat_new, type = "response")
+```
+
+```{r}
+pred_labels = factor(apply(pred, 1, function(x) which.max(x)))
+
+cm = caret::confusionMatrix(factor(dat_new$accident_severity), pred_labels, dnn = c("Prediction", "Reference"))
+
+cm
+```
+
+```{r}
+
+plt <- as.data.frame(cm$table)
+plt$Prediction <- factor(plt$Prediction, levels=rev(levels(plt$Prediction)))
+
+ggplot(plt, aes(Prediction,Reference, fill= Freq)) +
+        geom_tile() + geom_text(aes(label=Freq)) +
+        scale_fill_gradient(low="white", high="royalblue2") +# 009194 , royalblue
+        labs(x = "Reference",y = "Prediction") +
+        scale_x_discrete(labels=c("fatal", "serious", "slight")) +
+        scale_y_discrete(labels=c("slight", "serious", "fatal")) + theme_classic()
+```
+
+
+
+
+
+```{r}
+# save(gam_severity_ocat, file="models/gam_severity_ocat.Rdata")
+# load("models/gam_severity_ocat.Rdata")
+```
+
+# GAM: binary
+
+```{r}
+dat <- 
+  full_collisions %>% 
+  filter(!(light_conditions %in% c("Data missing or out of range", "Darkness - lighting unknown"))) %>%
+  # select(number_of_casualties,
+  #                  accident_severity, speed_limit, time, number_of_vehicles) %>%
+  mutate(number_of_casualties = number_of_casualties-1,
+         
+         accident_severity = case_when(
+            accident_severity == "Fatal" ~ 1,
+            accident_severity == "Serious" ~ 1,
+            accident_severity == "Slight" ~ 0),
+         
+         weekend = ifelse(day_of_week %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"), 0, 1),
+         
+         light_conditions = case_when(
+            light_conditions == "Daylight" ~ "Daylight",
+            light_conditions == "Darkness - lights lit"  ~ "Darkness - lights lit",
+            light_conditions %in% c("Darkness - lights unlit", "Darkness - no lighting") ~ "Darkness - no lights"
+            ),
+         
+         previous_accident = ifelse(carriageway_hazards == "Previous accident", 1, 0)
+         
+         
+         )
+
+dat$time <- as.numeric(dat$time)
+
+
+
+# preprocessing spatial
+geom_map <- map_data("world",region = "UK") %>% filter(!(subregion %in% c("Northern Ireland")))
+geom_map_no_islands <- geom_map %>% filter(group == 15)
+
+
+max_lat <- range(geom_map_no_islands$lat)
+max_lon <- range(geom_map_no_islands$long)
+
+
+#for plot
+geom_map_red <- geom_map %>% filter(lat <= max_lat[2] & lat >= max_lat[1] &
+                                       long <= max_lon[2] & long >= max_lon[1])
+
+# avoiding the extremes:
+dat <- dat %>% filter(latitude <= max_lat[2] & latitude >= max_lat[1] &
+                                       longitude <= max_lon[2] & longitude >= max_lon[1])
+
+
+
+# df_binned <- df_spatial %>% mutate(latitude = ceiling(10*latitude)/10,longitude = ceiling(10*longitude)/10) %>% group_by(latitude,longitude,date) %>% summarise(n = n()) %>% ungroup()
+
+```
+
+
+
+```{r}
+gam_severity_binary <- gam(accident_severity~
+           number_of_casualties +
+           s(time, bs = "cc") +
+           weekend +
+           s(number_of_vehicles, bs = "cr", k = 5) +
+           s(speed_limit, bs='cr', k = 5) +
+           light_conditions,
+         family= binomial(),
+         data = dat)
+```
+
+
+```{r}
+summary(gam_severity_binary)
+```
+
+
+```{r}
+b <- getViz(gam_severity_binary)
+```
+
+```{r}
+check(b)
+```
+
+```{r}
+print(plot(b), pages = 1)
+```
+
+
+
+
+
+```{r}
+# save(gam_severity_binary, file="models/gam_severity_binary.Rdata")
+# load("models/gam_severity_binary.Rdata")
+```
+
+
+
+## Testing
+
+```{r}
+dat_new <- 
+  full_collisions_test %>% filter(!(light_conditions %in% c("Data missing or out of range", "Darkness - lighting unknown"))) %>%
+  # select(number_of_casualties,
+  #                  accident_severity, speed_limit, time, number_of_vehicles) %>%
+  mutate(number_of_casualties = number_of_casualties-1,
+         
+         accident_severity = case_when(
+            accident_severity == "Fatal" ~ 1,
+            accident_severity == "Serious" ~ 1,
+            accident_severity == "Slight" ~ 0),
+         
+         weekend = ifelse(day_of_week %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"), 0, 1),
+         
+         light_conditions = case_when(
+            light_conditions == "Daylight" ~ "Daylight",
+            light_conditions == "Darkness - lights lit"  ~ "Darkness - lights lit",
+            light_conditions %in% c("Darkness - lights unlit", "Darkness - no lighting") ~ "Darkness - no lights"
+            ),
+         
+         previous_accident = ifelse(carriageway_hazards == "Previous accident", 1, 0)
+         
+         
+         )
+
+dat_new$time <- as.numeric(dat_new$time)
+
+
+
+# preprocessing spatial
+geom_map <- map_data("world",region = "UK") %>% filter(!(subregion %in% c("Northern Ireland")))
+geom_map_no_islands <- geom_map %>% filter(group == 15)
+
+
+max_lat <- range(geom_map_no_islands$lat)
+max_lon <- range(geom_map_no_islands$long)
+
+
+#for plot
+geom_map_red <- geom_map %>% filter(lat <= max_lat[2] & lat >= max_lat[1] &
+                                       long <= max_lon[2] & long >= max_lon[1])
+
+# avoiding the extremes:
+dat_new <- dat_new %>% filter(latitude <= max_lat[2] & latitude >= max_lat[1] &
+                                       longitude <= max_lon[2] & longitude >= max_lon[1])
+
+
+
+# df_binned <- df_spatial %>% mutate(latitude = ceiling(10*latitude)/10,longitude = ceiling(10*longitude)/10) %>% group_by(latitude,longitude,date) %>% summarise(n = n()) %>% ungroup()
+dat_new
+```
+
+
+```{r}
+pred <- predict(gam_severity_binary, newdata = dat_new, type = "response")
+```
+
+```{r}
+binary_pred = factor(ifelse(pred >0.5, 1, 0))
+
+cm = caret::confusionMatrix(factor(dat_new$accident_severity), binary_pred, dnn = c("Prediction", "Reference"))
+# cm <- confusionMatrix(factor(dat$accident_severity), factor(binary_pred), dnn = c("Prediction", "Reference"))
+
+cm
+```
+
+```{r}
+
+plt <- as.data.frame(cm$table)
+plt$Prediction <- factor(plt$Prediction, levels=rev(levels(plt$Prediction)))
+
+ggplot(plt, aes(Prediction,Reference, fill= Freq)) +
+        geom_tile() + geom_text(aes(label=Freq)) +
+        scale_fill_gradient(low="white", high="royalblue2") +#009194
+        labs(x = "Reference",y = "Prediction") +
+        scale_x_discrete(labels=c("serious or fatal", "slight")) +
+        scale_y_discrete(labels=c("slight", "serious or fatal")) + theme_classic()
+```
+
+

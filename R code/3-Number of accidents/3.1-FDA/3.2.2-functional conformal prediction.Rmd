@@ -1,0 +1,299 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "functional conformal prediction for each police district"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output: html_notebook
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r}
+library(tidyverse)
+library(conformalInference.fd)
+library(roahd)
+library(lubridate)
+library(mgcv)
+library(mgcViz)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/full_collisions.RData")
+```
+
+```{r}
+glimpse(full_collisions)
+```
+
+we need to create the dataset in a way that they cotain all of the days and a zero if no crashes happened in that day:
+
+```{r}
+all_dates <- unique(full_collisions$date)
+all_police_forces <- unique(full_collisions$police_force)
+
+full_combinations <- expand.grid(date = all_dates, police_force = all_police_forces)
+
+crashes_per_day_police <- full_combinations %>%
+  left_join(full_collisions %>% group_by(date, police_force) %>% summarize(number_of_crashes = n()),
+            by = c("date", "police_force")) %>%
+  replace_na(list(number_of_crashes = 0))
+
+glimpse(crashes_per_day_police)
+```
+
+```{r}
+crashes_per_day_police <- crashes_per_day_police %>% mutate(day_of_year = yday(date),
+                                                            day = factor(wday(date)),year = year(date))
+```
+
+removing the 29 of february for dimensioality problems in the vectors below
+
+```{r}
+crashes_per_day_police <- crashes_per_day_police %>% filter(!(month(date)==2 & day(date)==29))
+```
+
+```{r}
+train_years <- ceiling(seq(2005,2021,by = 1.5))
+cal_years <- seq(2006,2021,3)
+
+df_train <- crashes_per_day_police %>% filter(year %in% train_years) 
+df_cal <- crashes_per_day_police %>% filter(year %in% cal_years) 
+df_test <- crashes_per_day_police %>% filter(year == 2022)
+```
+
+fitting a gam for each police force:
+
+```{r}
+gams <- list()
+
+S = matrix(nrow = n_pol,ncol = 365)
+k = rep(0,n_pol)
+
+for(i in 1:n_pol){
+  
+  df_train_mid <- df_train %>% filter(police_force == levels(police_force)[i])
+  df_cal_mid <- df_cal %>% filter(police_force == levels(police_force)[i])
+  
+  gam <- bam(number_of_crashes ~ day + year +
+                                  s(day_of_year,k = 53, bs = "cr"), 
+                data = df_train_mid, family=quasipoisson(), method='REML')
+  
+  res_train_mid <- cbind(df_train_mid,preds = predict(gam, df_train_mid, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+
+  res_cal_mid <- cbind(df_cal_mid,preds = predict(gam, df_cal_mid, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+  
+  
+  ad_train <- res_train_mid %>% filter(police_force == levels(police_force)[i]) %>%
+  dplyr::select(absdiff)
+  a_mat <- matrix(ad_train$absdiff,byrow = F,nrow = 365)
+  ncm = apply(a_mat,1,max)
+  den = line_integral(x, ncm)
+  s = ncm/den
+  S[i,] = s
+  ad_cal <- res_cal_mid %>% filter(police_force == levels(police_force)[i]) %>%
+  dplyr::select(absdiff)
+  a_mat <- matrix(ad_cal$absdiff,byrow = F,nrow = 365)
+  ncs = apply(a_mat/S[i,],1,max)
+  k[i] = max(ncs)
+  
+  gams[[i]] <- gam
+}
+```
+
+midlands
+
+```{r}
+i <- 50
+df_test_filtered <- df_test %>% filter(police_force == levels(police_force)[i])
+preds <- predict(gams[[i]], df_test_filtered, type = "response")
+df_test_filtered  <- cbind(df_test_filtered,preds) %>% arrange(day_of_year)
+```
+
+```{r}
+df_plot <- data.frame(n = df_test_filtered$number_of_crashes,pred = df_test_filtered$preds, 
+                      ymax = df_test_filtered$preds + k[i]*S[i,],
+                      ymin = pmax( df_test_filtered$preds - k[i]*S[i,], rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+```
+
+London:
+
+```{r}
+i <- 30
+df_test_filtered <- df_test %>% filter(police_force == levels(police_force)[i])
+preds <- predict(gams[[i]], df_test_filtered, type = "response")
+df_test_filtered  <- cbind(df_test_filtered,preds) %>% arrange(day_of_year)
+```
+
+```{r}
+df_plot <- data.frame(n = df_test_filtered$number_of_crashes,pred = df_test_filtered$preds, 
+                      ymax = df_test_filtered$preds + k[i]*S[i,],
+                      ymin = pmax( df_test_filtered$preds - k[i]*S[i,], rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+```
+
+the model is still no great
+
+we probably need more data.
+
+using all the available data:
+
+```{r}
+full_collisioin_data <- readr::read_csv(file="dft-road-casualty-statistics-collision-1979-latest-published-year.csv") 
+
+spec(full_collisioin_data)
+glimpse(full_collisioin_data)
+
+full_collisions_all <- stats19::format_collisions(full_collisioin_data)
+
+glimpse(full_collisions_all)
+```
+
+```{r}
+all_dates <- unique(full_collisions_all$date)
+all_police_forces <- unique(full_collisions_all$police_force)
+
+full_combinations <- expand.grid(date = all_dates, police_force = all_police_forces)
+
+crashes_per_day_police <- full_combinations %>%
+  left_join(full_collisions_all %>% group_by(date, police_force) %>% 
+              summarize(number_of_crashes = n()),
+            by = c("date", "police_force")) %>%
+  replace_na(list(number_of_crashes = 0))
+
+glimpse(crashes_per_day_police)
+```
+
+```{r}
+crashes_per_day_police <- crashes_per_day_police %>% mutate(day_of_year = yday(date),
+                                                            day = factor(wday(date)),year = year(date))
+```
+
+removing the 29 of february for dimensioality problems in the vectors below
+
+```{r}
+crashes_per_day_police <- crashes_per_day_police %>% filter(!(month(date)==2 & day(date)==29))
+```
+
+```{r}
+train_years <- ceiling(seq(1979,2021,by = 1.5))
+cal_years <- seq(1979,2021,3)
+
+df_train <- crashes_per_day_police %>% filter(year %in% train_years) 
+df_cal <- crashes_per_day_police %>% filter(year %in% cal_years) 
+df_test <- crashes_per_day_police %>% filter(year == 2022)
+```
+
+doing it for a single police force at a time:
+
+```{r}
+gams <- list()
+
+S = matrix(nrow = n_pol,ncol = 365)
+k = rep(0,n_pol)
+
+for(i in 1:n_pol){
+  
+  df_train_mid <- df_train %>% filter(police_force == levels(police_force)[i])
+  df_cal_mid <- df_cal %>% filter(police_force == levels(police_force)[i])
+  
+  gam <- bam(number_of_crashes ~ day + year +
+                                  s(day_of_year,k = 53, bs = "cr"), 
+                data = df_train_mid, family=quasipoisson(), method='REML')
+  
+  res_train_mid <- cbind(df_train_mid,preds = predict(gam, df_train_mid, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+
+  res_cal_mid <- cbind(df_cal_mid,preds = predict(gam, df_cal_mid, type = "response")) %>%
+  arrange(date) %>% mutate(absdiff = abs(number_of_crashes-preds))
+  
+  ad_train <- res_train_mid %>% filter(police_force == levels(police_force)[i]) %>%
+  dplyr::select(absdiff)
+  a_mat <- matrix(ad_train$absdiff,byrow = F,nrow = 365)
+  setcfr <- apply(a_mat,2,max)
+  gamma <- sort(setcfr)[ceiling((m+1)*(1-alpha))]
+  a_mat_filt <- a_mat[,setcfr<=gamma]
+  ncm = apply(a_mat_filt,1,max)
+  ncm_sort <- sort(ncm)
+  den = line_integral(x, ncm)
+  s = ncm/den
+  S[i,] = s
+  
+  ad_cal <- res_cal_mid %>% filter(police_force == levels(police_force)[i]) %>%
+  dplyr::select(absdiff)
+  a_mat <- matrix(ad_cal$absdiff,byrow = F,nrow = 365)
+  ncs = apply(a_mat/S[i,],1,max)
+  k[i] = max(ncs)
+  
+  gams[[i]] <- gam
+}
+```
+
+midlands
+
+```{r}
+i <- 50
+df_test_filtered <- df_test %>% filter(police_force == levels(police_force)[i])
+preds <- predict(gams[[i]], df_test_filtered, type = "response")
+df_test_filtered  <- cbind(df_test_filtered,preds) %>% arrange(day_of_year)
+```
+
+```{r}
+df_plot <- data.frame(n = df_test_filtered$number_of_crashes,pred = df_test_filtered$preds, 
+                      ymax = df_test_filtered$preds + k[i]*S[i,],
+                      ymin = pmax( df_test_filtered$preds - k[i]*S[i,], rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+```
+
+London:
+
+```{r}
+i <- 30
+df_test_filtered <- df_test %>% filter(police_force == levels(police_force)[i])
+preds <- predict(gams[[i]], df_test_filtered, type = "response")
+df_test_filtered  <- cbind(df_test_filtered,preds) %>% arrange(day_of_year)
+```
+
+```{r}
+df_plot <- data.frame(n = df_test_filtered$number_of_crashes,pred = df_test_filtered$preds, 
+                      ymax = df_test_filtered$preds + k[i]*S[i,],
+                      ymin = pmax( df_test_filtered$preds - k[i]*S[i,], rep(0, 365)),td = 1:365)
+
+df_plot %>% ggplot() + geom_ribbon(aes(x=td,y = pred,ymin = ymin, ymax = ymax), 
+                                   fill = "blue", alpha = 0.25) + 
+  geom_line(aes(x=td,y = n),linewidth=1,colour = "black") + 
+  geom_line(aes(x=td,y = pred),linewidth=1,colour = "blue") + labs(x = "Day", y = "Number of accients",
+                                                     title = levels(df_test$police_force)[i])
+```
+
+
+

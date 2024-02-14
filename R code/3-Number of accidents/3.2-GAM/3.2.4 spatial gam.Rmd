@@ -1,0 +1,562 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "dayly accidents using location and time"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_section: true
+date: "2023-12-15"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center'
+    #fig.path = 'output/',
+    #fig.height = 6,
+    #fig.width = 12
+)
+```
+
+```{r libraries inclusions, include=FALSE}
+library(tidyverse)
+library(mgcv)
+library(splines)
+library(lubridate)
+library(ggplot2)
+library(knitr)
+library(sp)
+library(rgl)
+library(splines)
+library(pbapply)
+library(devtools)
+library(visreg)
+library(mgcViz)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/full_collisions.RData")
+```
+
+```{r}
+glimpse(full_collisions)
+```
+
+```{r}
+df_spatial <- full_collisions %>% 
+  select(c(date,latitude,longitude,accident_year,light_conditions,weather_conditions,day_of_week)) %>%
+  drop_na()
+rm(full_collisions)
+```
+
+```{r}
+geom_map <- map_data("world",region = "UK") %>% filter(!(subregion %in% c("Northern Ireland")))
+
+geom_map_no_islands <- geom_map %>% filter(group == 15)
+```
+
+```{r}
+max_lat <- range(geom_map_no_islands$lat)
+max_lon <- range(geom_map_no_islands$long)
+```
+
+```{r}
+geom_map_red <- geom_map %>% filter(lat <= max_lat[2] & lat >= max_lat[1] &
+                                       long <= max_lon[2] & long >= max_lon[1])
+```
+
+this will allow is to get a better result since avoiding the extremes:
+
+```{r}
+df_spatial <- df_spatial %>% filter(latitude <= max_lat[2] & latitude >= max_lat[1] &
+                                       longitude <= max_lon[2] & longitude >= max_lon[1])
+```
+
+```{r}
+df_binned <- df_spatial %>% mutate(latitude = ceiling(10*latitude)/10,longitude = ceiling(10*longitude)/10) %>% group_by(latitude,longitude,date) %>% summarise(n = n()) %>% ungroup()
+```
+
+selecting a reduced dataset for faster experimentation 
+
+```{r}
+df_red <- df_binned %>% filter(lubridate::year(date) == 2022)
+```
+
+```{r}
+world_cities <- read.csv("/Users/macbookpro/Documents/Nonparametric Statisics/Project/raw data/worldcities.csv")
+```
+
+selecting the biggest cities:
+
+```{r}
+uk_cities <- world_cities %>% filter(country == "United Kingdom")
+
+cities <- uk_cities %>% select(c(city,lat,lng,population)) %>% filter(population > 150000) %>% 
+  filter(city != "Belfast")
+```
+
+a first element is to deterimie if there is a difference in the year for the locations:
+
+```{r}
+df_feb <- df_binned %>% filter(lubridate::year(date) < 2010) %>% filter(lubridate::month(date) == 2)
+
+df_nov <- df_binned %>% filter(lubridate::year(date) < 2010) %>% filter(lubridate::month(date) == 11)
+```
+
+fitting the model of the only space in the different times
+
+```{r}
+model_feb <- gam(n ~ s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)), 
+                data = df_feb, family=poisson(), method='REML')
+```
+
+```{r}
+summary(model_feb)
+```
+
+```{r}
+plot(sm(getViz(model_feb), 1)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+```{r}
+model_nov <- gam(n ~ s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)), 
+                data = df_nov, family=poisson(), method='REML')
+```
+
+```{r}
+summary(model_nov)
+```
+
+```{r}
+plot(sm(getViz(model_nov), 1)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+there is not a big difference, no need tor time and space iteractions.
+
+the baseline model is:
+
+```{r}
+mt <- gam(n ~ s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)), 
+                data = df_red, family=poisson(), method='REML')
+```
+
+```{r}
+summary(mt)
+```
+
+```{r}
+plot(mt,asp = 1)
+```
+
+```{r}
+plot(sm(getViz(mt), 1)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+```{r}
+gam.check(mt)
+```
+
+starting only with the day of the year
+
+```{r}
+df_red_day <- df_red %>% mutate(day_of_year = lubridate::yday(date))
+```
+
+```{r}
+gam_dayofyear <- gam(n ~ s(day_of_year,k = 12, bs = "cr") + 
+                       s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)), 
+                data = df_red_day, family=poisson(), method='REML')
+```
+
+```{r}
+summary(gam_dayofyear)
+```
+
+```{r}
+plot(gam_dayofyear)
+```
+
+```{r}
+plot(sm(getViz(gam_dayofyear), 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+```{r}
+gam.check(gam_dayofyear)
+```
+
+we can add more information about the time:
+
+```{r}
+df_red_day <- df_red_day %>% mutate(month = lubridate::month(date),day_type = ifelse(weekdays(date) %in% c("Saturday", "Sunday"), "weekend", "weekday")) %>% mutate(day_type = as.factor(day_type))
+```
+
+```{r}
+gam_day_we <- gam(n ~ day_type + s(day_of_year,k = 53, bs = "cr") + 
+                       s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)), 
+                data = df_red_day, family=poisson(), method='REML')
+```
+
+```{r}
+summary(gam_day_we)
+```
+
+```{r}
+plot(gam_day_we)
+```
+
+```{r}
+plot(sm(getViz(gam_day_we), 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+```{r}
+gam.check(gam_day_we)
+```
+
+still the majority is explained by the latitude ad longitude
+
+we can try to add more information about the weather ad the district:
+
+```{r}
+df_weather <- df_spatial %>%
+  filter(!(weather_conditions %in% c("Data missing or out of range", "Unknown","Other"))) %>%
+  mutate(
+    wind = case_when(
+      weather_conditions %in% c("Fine + high winds", "Raining + high winds",
+                                             "Snowing + high winds") ~ "High winds",
+      weather_conditions %in% c("Fine no high winds", "Raining no high winds",
+                                             "Snowing no high winds","Fog or mist") ~ "No high winds"
+    ),
+    rainfall = case_when(
+      weather_conditions %in% c("Raining + high winds", "Raining no high winds") ~ "Raining",
+      weather_conditions %in% c("Snowing + high winds", "Snowing no high winds") ~ "Snowing",
+      weather_conditions %in% c("Fine + high winds", "Fine no high winds") ~ "Fine",
+      weather_conditions %in% c("Fog or mist") ~ "Fog"
+    )
+  ) 
+
+df_weather <- df_weather %>% mutate(wind = as.factor(wind),rainfall = as.factor(rainfall)) %>%
+  mutate(latitude = ceiling(10*latitude)/10,longitude = ceiling(10*longitude)/10) %>%
+  group_by(latitude,longitude,date) %>% 
+  summarise(n = n(),wind = names(sort(table(wind), decreasing = TRUE)[1]),
+            precipitation = names(sort(table(rainfall), decreasing = TRUE)[1])) %>% ungroup()
+```
+
+```{r}
+df_weather$wind <- factor(df_weather$wind)
+df_weather$precipitation <- factor(df_weather$precipitation)
+```
+
+```{r}
+df_weather <- df_weather %>% mutate(day_of_year = yday(date),day_type = ifelse(weekdays(date) %in% c("Saturday", "Sunday"), "weekend", "weekday")) %>% mutate(day_type = as.factor(day_type))
+```
+
+```{r}
+df_weather_red <- df_weather %>% filter(year(date) == 2022)
+```
+
+```{r}
+gam_day_weather <- gam(n ~ day_type + precipitation + wind + s(day_of_year,k = 53, bs = "cr") + 
+                       s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)), 
+                data = df_weather_red, family=poisson(), method='REML')
+```
+
+```{r}
+summary(gam_day_weather)
+```
+
+the performance is even worse than before, the precipitations are not really significant here
+
+the reml on the other hand is better
+
+```{r}
+plot(gam_day_weather)
+```
+
+```{r}
+plot(sm(getViz(gam_day_weather), 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+removing the wind since not significant:
+
+```{r}
+gam_day_weather <- gam(n ~ day_type + precipitation + s(day_of_year,k = 53, bs = "cr") + 
+                       s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)), 
+                data = df_weather_red, family=poisson(), method='REML')
+```
+
+```{r}
+summary(gam_day_weather)
+```
+
+```{r}
+plot(gam_day_weather)
+```
+
+```{r}
+plot(sm(getViz(gam_day_weather), 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+```{r}
+gam.check(gam_day_weather)
+```
+
+```{r}
+AIC(mt,gam_dayofyear,gam_day_we,gam_day_weather)
+```
+
+there is an improvement in terms of AIC but not i % of deviance expaied.
+
+we can probably do better by simply increasing the spatial resollutio here.
+
+by improving the ammount of spatial basis we should have a better resuklt, 
+since it seem that k iss too low
+
+```{r}
+gam_day_weather2 <- gam(n ~ day_type + precipitation + s(day_of_year,k = 53, bs = "cr") + 
+                       s(longitude,latitude,bs = "gp",k = 200,m = c(1,0.5)), 
+                data = df_weather_red, family=poisson(), method='REML')
+```
+
+```{r}
+summary(gam_day_weather2)
+```
+
+this is better
+
+```{r}
+b <- getViz(gam_day_weather2)
+```
+
+```{r}
+print(plot(b, allTerms = T), pages = 1)
+```
+
+```{r}
+plot(sm(b, 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+```{r}
+check(b)
+```
+still saying it is too low.
+
+```{r}
+pl <- plot(b, allTerms = T) + l_points() + l_fitLine(linetype = 3) + l_fitContour() + 
+      l_ciLine(colour = 2) + l_ciBar() + l_fitPoints(size = 1, col = 2) + theme_get() + labs(title = NULL)
+pl$empty # FALSE: because we added gamLayers
+```
+
+```{r}
+print(pl,pages = 4)
+```
+
+
+```{r}
+AIC(gam_day_weather2)
+```
+
+still a improvement but not massive.
+
+changing the different distributions:
+
+tryig to change to quasipoisson:
+
+```{r}
+gam_day_weather_qp <- gam(n ~ day_type + precipitation + s(day_of_year,k = 53, bs = "cr") + 
+                       s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)), 
+                data = df_weather_red, family=quasipoisson(), method='REML')
+```
+
+```{r}
+summary(gam_day_weather_qp)
+```
+
+```{r}
+b_qp <- getViz(gam_day_weather_qp)
+```
+
+```{r}
+print(plot(b_qp, allTerms = T), pages = 1)
+```
+
+```{r}
+plot(sm(b_qp, 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + 
+  xlab("longitude") + ylab("latitude") + ggtitle("Spatial component") + coord_fixed(ratio=1) + theme(legend.position = "none",plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+check(b_qp)
+```
+
+this seems better as far as fit goes.
+
+```{r}
+check1D(b_qp,"day_of_year") + l_dens(type = "cond", alpha = 0.8) + l_points() + l_rug(alpha = 0.2)
+```
+
+```{r}
+check1D(b_qp,"day_type") + l_points() + l_rug(alpha = 0.2) 
+```
+
+```{r}
+check1D(b_qp,"precipitation") + l_points() + l_rug(alpha = 0.2) 
+```
+
+```{r}
+check2D(b_qp, x1 = "longitude", x2 = "latitude") + l_rug() + l_dens(type="joint", alpha=0.6) + l_points()
+```
+
+since this is not a true poisson we don't have an exacy aic
+
+trying negative binomial:
+
+```{r}
+gam_day_weather_nb <- gam(n ~ day_type + precipitation + s(day_of_year,k = 53, bs = "cr") + 
+                       s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)), 
+                data = df_weather_red, family=nb(), method='REML')
+```
+
+```{r}
+summary(gam_day_weather_nb)
+```
+
+```{r}
+b_nb <- getViz(gam_day_weather_nb)
+```
+
+```{r}
+print(plot(b_nb, allTerms = T), pages = 1)
+```
+
+```{r}
+plot(sm(b_nb, 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+```{r}
+check(b_nb)
+```
+
+```{r}
+AIC(gam_day_weather_nb)
+```
+
+this is very similar to the normal poisson case.
+the quasipoisson is much better in terms of fit.
+
+twedie distribution:
+
+trying negative binomial:
+
+```{r}
+gam_day_weather_tw <- gam(n ~ day_type + precipitation + s(day_of_year,k = 53, bs = "cr") + 
+                       s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)), 
+                data = df_weather_red, family=tw(), method='REML')
+```
+
+```{r}
+summary(gam_day_weather_tw)
+```
+
+```{r}
+b_tw <- getViz(gam_day_weather_tw)
+```
+
+```{r}
+print(plot(b_tw, allTerms = T), pages = 1)
+```
+
+```{r}
+plot(sm(b_tw, 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+```{r}
+check(b_tw)
+```
+
+```{r}
+AIC(gam_day_weather_tw)
+```
+
+this is the best for AIC
+quasipoisson has bigger reml
+
+we could try to better fit the time domain 
+
+```{r}
+df_weather_red <- df_weather_red %>% mutate(day = wday(date)) %>% mutate(day = factor(day))
+```
+
+```{r}
+gam_day_weather_qp2 <- gam(n ~ day + precipitation + s(day_of_year,k = 53, bs = "cr") + 
+                       s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)), 
+                data = df_weather_red, family=quasipoisson(), method='REML')
+```
+
+```{r}
+summary(gam_day_weather_qp2)
+```
+
+```{r}
+b_qp2 <- getViz(gam_day_weather_qp2)
+```
+
+```{r}
+print(plot(b_qp2, allTerms = T), pages = 1)
+```
+
+```{r}
+plot(sm(b_qp2, 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + 
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5)) +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component",) + coord_fixed(ratio=1) 
+```
+
+```{r}
+check(b_qp2)
+```
+
+this is a little better still not much improvement.

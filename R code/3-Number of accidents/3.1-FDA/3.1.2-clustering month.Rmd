@@ -1,0 +1,920 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "Functional clustering monthly data"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+    
+output: html_notebook
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r libraries inclusions, include=FALSE}
+library(tidyverse)
+library(roahd)
+#library(fda)
+library(fdacluster)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/functional/df_month.RData")
+```
+
+first we start with outlier detection in the functional case
+
+```{r}
+fd_month <- fData(1:31,as_tibble(df_month[,3:33]))
+```
+
+```{r}
+plot(fd_month,lwd = 3,xlab = "day",ylab = "dayly number of crashes",main = "dayly crashes in each month")
+```
+functional bagplot:
+
+```{r}
+year_fbagplot <- fbplot(fd_month, main="Magnitude outliers monthly data")
+```
+
+the default F is:
+
+```{r}
+year_fbagplot$Fvalue
+```
+
+no outliers found
+
+```{r}
+df_month[year_fbagplot$ID_outliers,1:2]
+```
+
+we need to remove the day 366 since it causes problems in the iterations to find the F:
+
+```{r}
+fd_month2 <- fData(1:28,df_month[,3:30])
+```
+
+```{r}
+year_fbagplot2 <- fbplot(fd_month, main="Magnitude outliers yearly data",
+                                  adjust = list( N_trials = 20,trial_size = fd_month2$N,
+                                                 VERBOSE = TRUE ))
+```
+
+the chosen F value is:
+
+```{r}
+year_fbagplot2$Fvalue
+```
+
+the outlying years are:
+
+```{r}
+df_month[year_fbagplot2$ID_outliers,1:2]
+```
+
+nothing changedjust the first year are seen as outliers in this case
+
+outiliergram:
+
+```{r}
+invisible(out_month <- outliergram(fd_month,adjust = F,lwd = 3,display = F))
+```
+
+the found outliers are:
+
+```{r}
+df_month[out_month$ID_outliers,1:2]
+```
+
+this are all in december.
+
+the plot of the original function is not working.
+
+adjusting the F:
+
+```{r}
+out_month <- outliergram(fd_month,lwd = 5,adjust = list( N_trials = 20,trial_size = 8*fd_month$N,
+                                                 VERBOSE = TRUE ),display = FALSE)
+```
+
+```{r}
+out_month$Fvalue
+```
+
+nothing changed, same outliers detected.
+
+```{r}
+df_month[out_month$ID_outliers,1:2]
+```
+
+plotting in the old way.
+
+```{r}
+par(mfrow=c(1,2))
+plot(fd_month[out_month$ID_outliers,],lwd = 3,main = "outliers",col = 2)
+plot(fd_month[-out_month$ID_outliers,],lwd = 3,main = "non outliers",col = 3)
+```
+
+there is a clear pattern in the data due to the christmas period.
+
+doing some clustering:
+
+let's run a comparison of the methods:
+
+```{r}
+days <- 1:31
+n <- fd_month$N
+x <- t(matrix(rep(days,n),31,n))
+y <- as.matrix(df_month[,3:33])
+```
+
+```{r}
+k <- 3
+system.time(
+fdakma0der_shift <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeding_strategy = "kmeans++",
+  warping_class = "shift",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = TRUE
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "amplitude")
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "phase")
+```
+
+```{r}
+diagnostic_plot(fdakma0der_shift)
+```
+
+the negative silouettes are not good
+
+```{r}
+n_sub <- 50
+sub_id <- sample(1:n,n_sub,replace = FALSE)
+x_sub <- t(matrix(rep(days,n_sub),31,n_sub))
+y_sub <- as.matrix(df_month[sub_id,3:33])
+
+system.time(invisible(comparison_kmeans <- compare_caps(
+  x_sub,
+  y_sub,
+  n_clusters = 2:5,
+  metric = "pearson",
+  clustering_method = "kmeans",
+  warping_class = "shift",
+  centroid_type = "mean",
+  cluster_on_phase = FALSE
+    )
+  )
+)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "mean",lwd = 3)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "distribution")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "mean")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "distribution")
+```
+
+
+```{r}
+n_sub <- 50
+sub_id <- sample(1:n,n_sub,replace = FALSE)
+x_sub <- t(matrix(rep(days,n_sub),31,n_sub))
+y_sub <- as.matrix(df_month[sub_id,3:33])
+
+system.time(invisible(comparison_kmeans <- compare_caps(
+  x_sub,
+  y_sub,
+  n_clusters = 2:5,
+  metric = "pearson",
+  clustering_method = "kmeans",
+  warping_class = "none",
+  centroid_type = "mean",
+  cluster_on_phase = FALSE
+    )
+  )
+)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "mean",lwd = 3)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "distribution")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "mean")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "distribution")
+```
+
+this does not seem conclusive
+
+let's do an experiment on the whole dataset for k = 4:
+
+```{r}
+k <- 4
+seeds <- c(184,193,113,50) # from a previous experiment using kmeans++
+system.time(
+fdakma0der_shift <- fdakmeans(x = x,y = y, n_clusters = k,
+  seeds = seeds,
+  warping_class = "shift",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "amplitude")
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "phase")
+```
+
+
+```{r}
+matplot(t(fdakma0der_shift$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:4)
+```
+
+we have 2 curves that are similar (blue and green)
+
+we can look for each of the clusters the month:
+
+cluster 1:
+
+this has more of a baseline distrtibution:
+```{r}
+table(df_month[fdakma0der_shift$memberships==1,2])
+```
+
+cluster 2:
+
+this has most of the december months, since low number at the end
+
+```{r}
+table(df_month[fdakma0der_shift$memberships==2,2])
+```
+
+cluster 3:
+
+this has most of the summer months
+
+```{r}
+table(df_month[fdakma0der_shift$memberships==3,2])
+```
+
+cluster 4:
+
+this has most of the months of january, since low at the beginning of the month 
+
+```{r}
+table(df_month[fdakma0der_shift$memberships==4,2])
+```
+
+another possibility is to allign all of the curves befor the clustering and then do the clustering:
+
+```{r}
+
+fdakma0der_shift <- fdakmeans(x = x,y = y, n_clusters = 1,
+  seeds = 1,
+  warping_class = "shift",
+  metric = "pearson",
+  centroid_type = "medoid",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F
+)
+
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "amplitude")
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "phase")
+```
+
+we recover the curves in the following way:
+
+```{r}
+alligned_x <- fdakma0der_shift$grids[1,]
+alligned_y <- fdakma0der_shift$aligned_curves[,1,]
+```
+
+we can cluster this with no allignment:
+
+```{r}
+k <- 4
+seeds <- c(184,193,113,50) # from a previous experiment using kmeans++
+system.time(
+fdakma0der_shift <- fdakmeans(x = alligned_x,y = alligned_y, n_clusters = k,
+  seeds = seeds,
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = T
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "amplitude")
+```
+
+```{r}
+diagnostic_plot(fdakma0der_shift)
+```
+
+this is still not great:
+
+the dominating behaviour is at the end of the month:
+
+```{r}
+matplot(t(fdakma0der_shift$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:4)
+```
+
+we have 2 curves that are similar (blue and green)
+
+we can look for each of the clusters the month:
+
+cluster 1:
+
+this has more of a baseline distrtibution of the work months:
+```{r}
+table(df_month[fdakma0der_shift$memberships==1,2])
+```
+
+cluster 2:
+
+this has most of the december months, since low number at the end
+
+```{r}
+table(df_month[fdakma0der_shift$memberships==2,2])
+```
+
+cluster 3:
+
+this has most of the summer months
+
+```{r}
+table(df_month[fdakma0der_shift$memberships==3,2])
+```
+
+cluster 4:
+
+this has most of the months of february, since low at the en of the month
+
+```{r}
+table(df_month[fdakma0der_shift$memberships==4,2])
+```
+
+let's try to increase the number of clusters and then possibly joining them later:
+
+```{r}
+k <- 10
+system.time(
+fdakma0der_shift <- fdakmeans(x = alligned_x,y = alligned_y, n_clusters = k,
+  seeding_strategy = "kmeans++",
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "amplitude")
+```
+
+```{r}
+matplot(t(fdakma0der_shift$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:k,lwd = 3)
+```
+
+we can see that we have some outliers:
+
+cluster 6 an 9 are outliers
+
+```{r}
+labels <- fdakma0der_shift$memberships
+```
+
+```{r}
+df_month[fdakma0der_shift$memberships==6,1:2]
+```
+this is the covid year
+
+```{r}
+df_month[fdakma0der_shift$memberships==9,1:2]
+```
+this has a low spike arroun day 10
+
+the other 2 small clusters are 3 and 8
+
+```{r}
+df_month[fdakma0der_shift$memberships %in% c(3,8),1:2]
+```
+
+
+this are just february.
+
+we can take a look at the others:
+
+```{r}
+matplot(t(fdakma0der_shift$center_curves[,1,])[,-c(3,6,8,9)],type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:6,lwd = 3)
+```
+the difference is just in the beginnig and at the end:
+
+cluster 1:
+```{r}
+table(df_month[fdakma0der_shift$memberships==1,2])
+```
+
+decembers
+
+cluster 2:
+
+```{r}
+table(df_month[fdakma0der_shift$memberships==2,2])
+```
+
+cluster 4:
+
+this has most of the summer months
+
+```{r}
+table(df_month[fdakma0der_shift$memberships==4,2])
+```
+
+cluster 5:
+
+this has most of the months of febrayry, since low at the beginning of the month 
+
+```{r}
+table(df_month[fdakma0der_shift$memberships==5,2])
+```
+
+custer 7:
+
+```{r}
+table(df_month[fdakma0der_shift$memberships==7,2])
+```
+
+
+cluster 10:
+```{r}
+table(df_month[fdakma0der_shift$memberships==10,2])
+```
+
+this has january, low at the beginning
+
+this can be useful to reduce the clusters to:
+
+2 outliers
+
+3, 5 and 8 joined in febrayry
+
+10 for january
+
+4 for summer 
+
+the rest together.
+
+we could try using hclust:
+
+```{r}
+system.time(
+  hclustres <- fdahclust(
+  x = alligned_x,
+  y = alligned_y,
+  n_clusters = 4L,
+  warping_class = "none",
+  centroid_type = "mean",
+  metric = "pearson",
+  linkage_criterion = "complete",
+  cluster_on_phase = FALSE,
+  use_verbose = TRUE,
+  warping_options = c(0.15, 0.15),
+  maximum_number_of_iterations = 100L,
+  number_of_threads = 12L,
+  parallel_method = 0L,
+  distance_relative_tolerance = 0.001,
+  use_fence = FALSE,
+  check_total_dissimilarity = TRUE,
+  compute_overall_center = FALSE
+)
+)
+```
+
+```{r}
+autoplot(hclustres)
+```
+
+
+```{r}
+diagnostic_plot(hclustres)
+```
+
+this is still not great:
+
+the dominating behaviour is at the end of the month:
+
+```{r}
+table(hclustres$memberships)
+```
+
+
+```{r}
+matplot(t(hclustres$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:4,lwd = 3)
+```
+
+clsuter 1 winter an may
+
+```{r}
+table(df_month[hclustres$memberships==1,2])
+```
+
+cluster 2 ferb
+
+```{r}
+table(df_month[hclustres$memberships==2,2])
+```
+
+cluster 3 summer and spring :
+```{r}
+table(df_month[hclustres$memberships==3,2])
+```
+
+cluster 4  feb
+
+```{r}
+table(df_month[hclustres$memberships==4,2])
+```
+
+we need to select k, we can do a comparison with no allignlemt:
+
+```{r}
+n_sub <- 50
+sub_id <- sample(1:n,n_sub,replace = FALSE)
+x_sub <- t(matrix(rep(alligned_x,n_sub),31,n_sub))
+y_sub <- as.matrix(alligned_y[sub_id,])
+
+system.time(invisible(comparison_kmeans <- compare_caps(
+  x_sub,
+  y_sub,
+  n_clusters = 3:6,
+  metric = "pearson",
+  clustering_method = "kmeans",
+  warping_class = "none",
+  centroid_type = "mean",
+  cluster_on_phase = FALSE
+    )
+  )
+)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "mean",lwd = 3)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "distribution")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "mean")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "distribution")
+```
+
+this is suggesting 3 clusters:
+
+```{r}
+k <- 3
+system.time(
+fdakma0der_shift <- fdakmeans(x = alligned_x,y = alligned_y, n_clusters = k,
+  seeding_strategy = "kmeans++",
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 10L
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "amplitude")
+```
+
+```{r}
+matplot(t(fdakma0der_shift$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:3,lwd = 3)
+```
+
+
+cluster 1:
+```{r}
+table(df_month[fdakma0der_shift$memberships==1,2])
+```
+
+
+cluster 2:
+
+```{r}
+table(df_month[fdakma0der_shift$memberships==2,2])
+```
+
+cluster 3:
+
+february
+```{r}
+table(df_month[fdakma0der_shift$memberships==3,2])
+```
+
+using hclust:
+
+```{r}
+system.time(
+  hclustres <- fdahclust(
+  x = alligned_x,
+  y = alligned_y,
+  n_clusters = 3L,
+  warping_class = "none",
+  centroid_type = "mean",
+  metric = "pearson",
+  linkage_criterion = "complete",
+  cluster_on_phase = FALSE,
+  use_verbose = TRUE,
+  warping_options = c(0.15, 0.15),
+  maximum_number_of_iterations = 100L,
+  number_of_threads = 12L,
+  parallel_method = 0L,
+  distance_relative_tolerance = 0.001,
+  use_fence = FALSE,
+  check_total_dissimilarity = TRUE,
+  compute_overall_center = FALSE
+)
+)
+```
+
+```{r}
+autoplot(hclustres)
+```
+
+
+```{r}
+diagnostic_plot(hclustres)
+```
+
+this is still not great:
+
+the dominating behaviour is at the end of the month:
+
+```{r}
+table(hclustres$memberships)
+```
+
+
+```{r}
+matplot(t(hclustres$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:4,lwd = 3)
+```
+
+clsuter 1 winter an may
+
+```{r}
+table(df_month[hclustres$memberships==1,2])
+```
+
+cluster 2 ferb
+
+```{r}
+table(df_month[hclustres$memberships==2,2])
+```
+
+cluster 3 summer and spring :
+```{r}
+table(df_month[hclustres$memberships==3,2])
+```
+
+trying to solve the february problem by removing the last days an see the effect of
+the general  pattern
+
+```{r}
+alligning_shift <- fdakmeans(x = x[,1:28],y = y[,1:28], n_clusters = 1,
+  seeds = 1,
+  warping_class = "shift",
+  metric = "pearson",
+  centroid_type = "medoid",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F
+)
+
+x_all_cut <- alligning_shift$grids[1,]
+y_all_cut <- alligning_shift$aligned_curves[,1,]
+```
+
+```{r}
+k <- 3
+system.time(
+fdakma0der_shift <- fdakmeans(x = x_all_cut,y = y_all_cut, n_clusters = k,
+  seeding_strategy = "kmeans++",
+  warping_class = "none",
+  metric = "pearson",
+  centroid_type = "mean",
+  distance_relative_tolerance = 1e-3,
+  add_silhouettes = F,
+  parallel_method = 0L,
+  number_of_threads = 10L
+)
+)
+```
+
+```{r}
+autoplot(fdakma0der_shift,type = "amplitude")
+```
+
+```{r}
+matplot(t(fdakma0der_shift$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:3,lwd = 3)
+```
+
+cluster 1:
+
+the rest
+```{r}
+table(df_month[fdakma0der_shift$memberships==1,2])
+```
+
+cluster 2:
+
+jaunary, june an september
+```{r}
+table(df_month[fdakma0der_shift$memberships==2,2])
+```
+
+cluster 3:
+
+this is december
+```{r}
+table(df_month[fdakma0der_shift$memberships==3,2])
+```
+
+
+trying to select k
+
+```{r}
+n_sub <- 40
+sub_id <- sample(1:n,n_sub,replace = FALSE)
+x_sub <- t(matrix(rep(x_all_cut,n_sub),28,n_sub))
+y_sub <- as.matrix(y_all_cut[sub_id,])
+
+system.time(invisible(comparison_kmeans <- compare_caps(
+  x_sub,
+  y_sub,
+  n_clusters = 3:6,
+  metric = "pearson",
+  clustering_method = "kmeans",
+  warping_class = "none",
+  centroid_type = "mean",
+  cluster_on_phase = FALSE
+    )
+  )
+)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "mean",lwd = 3)
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "wss", what = "distribution")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "mean")
+```
+
+```{r}
+plot(comparison_kmeans, validation_criterion = "silhouette", what = "distribution")
+```
+
+this is suggesting 3 clusters:
+
+using hclust:
+
+```{r}
+system.time(
+  hclustres <- fdahclust(
+  x = x_all_cut,
+  y = y_all_cut,
+  n_clusters = 3L,
+  warping_class = "none",
+  centroid_type = "mean",
+  metric = "pearson",
+  linkage_criterion = "complete",
+  cluster_on_phase = FALSE,
+  use_verbose = TRUE,
+  warping_options = c(0.15, 0.15),
+  maximum_number_of_iterations = 100L,
+  number_of_threads = 12L,
+  parallel_method = 0L,
+  distance_relative_tolerance = 0.001,
+  use_fence = FALSE,
+  check_total_dissimilarity = TRUE,
+  compute_overall_center = FALSE
+)
+)
+```
+
+```{r}
+autoplot(hclustres)
+```
+
+```{r}
+diagnostic_plot(hclustres)
+```
+
+this is better
+
+the dominating behaviour is at the end of the month:
+
+```{r}
+table(hclustres$memberships)
+```
+
+```{r}
+matplot(t(hclustres$center_curves[,1,]),type = 'l',
+        main='clustered and alligned curves',xlab='days',ylab='crashes', col = 1:4,lwd = 3)
+```
+
+cluster 1:
+
+january ad april
+```{r}
+table(df_month[hclustres$memberships==1,2])
+```
+
+cluster 2:
+
+rest of the year
+```{r}
+table(df_month[hclustres$memberships==2,2])
+```
+
+cluster 3:
+
+december
+```{r}
+table(df_month[hclustres$memberships==3,2])
+```
+
+this is the best we have 3 clusters

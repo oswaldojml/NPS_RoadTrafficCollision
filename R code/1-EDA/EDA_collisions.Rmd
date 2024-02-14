@@ -1,0 +1,319 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "Expolratory data analysis collisions data"
+author:
+    - "Valeria Iapaolo"
+    - "Oswald Jesus Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_section: true
+date: "2023-11-10"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center',
+    #fig.path = 'output/',
+    fig.height = 6,
+    fig.width = 12
+)
+```
+
+```{r, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(patchwork)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/full_collisions.RData")
+```
+
+```{r}
+glimpse(full_collisions)
+```
+
+doing some EDA with a focus on severity:
+
+## severity
+
+```{r}
+full_collisions %>% ggplot(aes(accident_severity)) + geom_bar()
+```
+## year
+
+```{r}
+full_collisions %>% ggplot(aes(accident_year)) + geom_bar(aes(fill = accident_severity))
+```
+
+fixing the scale to see the proportions:
+
+```{r}
+full_collisions %>% ggplot(aes(y = accident_year, fill = accident_severity)) + 
+  geom_bar(position = "fill")
+```
+
+the composition seems to change over the years, more serious than slight
+
+## time
+
+```{r}
+full_collisions %>% ggplot(aes(time,color = accident_severity)) + geom_freqpoly(bins = 48)
+```
+
+```{r}
+full_collisions %>%  filter(accident_severity == "Fatal") %>% ggplot(aes(time,color = accident_severity)) + geom_freqpoly(bins = 48)
+```
+
+same pattern for this.
+
+```{r}
+full_collisions %>% ggplot(aes(x = time, fill = accident_severity)) + 
+  geom_histogram(bins = 48,position = "fill")
+```
+
+this could be interesting as well, in the night the severity increases.
+
+## day of the week
+
+```{r}
+full_collisions$day_of_week <- factor(full_collisions$day_of_week,levels = c("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"),ordered = T)
+
+full_collisions %>% ggplot(aes(day_of_week)) + geom_bar(aes(fill = accident_severity))
+```
+
+```{r}
+full_collisions %>% ggplot(aes(x = day_of_week, fill = accident_severity)) + 
+  geom_bar(position = "fill")
+```
+
+the severity changes
+
+## date
+
+```{r}
+full_collisions %>% mutate(n_accidents = n(),day = yday(date)) %>%  ggplot(aes(day,color = as.factor(accident_year))) + geom_freqpoly(bins = 366) + theme(legend.position = "none")
+```
+
+we can see the covid years:
+
+clearly:
+
+```{r}
+full_collisions %>% filter(accident_year > 2018) %>% mutate(n_accidents = n(),day = yday(date)) %>%  ggplot(aes(day,color = as.factor(accident_year))) + geom_freqpoly(bins = 366) + theme(legend.position = "top")
+```
+
+we can try to look for a trend in the day of the month:
+
+```{r}
+full_collisions %>% mutate(n_accidents = n(),day = mday(date)) %>%  ggplot(aes(day,color = as.factor(accident_year))) + geom_freqpoly(bins = 31) + theme(legend.position = "none")
+```
+nothing
+
+## number of vehicles:
+
+```{r}
+full_collisions %>% ggplot(aes(number_of_vehicles)) + geom_bar(aes(fill = accident_severity)) + xlim(c(1,10))
+```
+
+
+```{r}
+full_collisions %>% ggplot(aes(x = number_of_vehicles, fill = accident_severity)) + 
+  geom_bar(position = "fill") + xlim(c(1,10))
+```
+
+
+## number of casuallties:
+
+```{r}
+full_collisions %>% ggplot(aes(number_of_casualties)) + geom_bar(aes(fill = accident_severity)) + xlim(c(1,10))
+```
+
+
+```{r}
+full_collisions %>% ggplot(aes(x = number_of_casualties, fill = accident_severity)) + 
+  geom_bar(position = "fill") + xlim(c(1,10))
+```
+
+## first road class:
+
+```{r}
+full_collisions %>% ggplot(aes(first_road_class)) + geom_bar(aes(fill = accident_severity)) 
+```
+
+```{r}
+full_collisions %>% ggplot(aes(x = first_road_class, fill = accident_severity)) + 
+  geom_bar(position = "fill")
+```
+
+## second roadd class
+
+```{r}
+full_collisions %>% ggplot(aes(second_road_class)) + geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+```{r}
+full_collisions %>% ggplot(aes(x = second_road_class, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## road type
+
+```{r}
+full_collisions %>% ggplot(aes(road_type)) + geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+```{r}
+full_collisions %>% ggplot(aes(x = road_type, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## speed limit
+
+```{r}
+full_collisions %>% ggplot(aes(as.factor(speed_limit))) + geom_bar(aes(fill = accident_severity)) 
+```
+
+```{r}
+full_collisions %>% ggplot(aes(x = as.factor(speed_limit), fill = accident_severity)) + 
+  geom_bar(position = "fill") 
+```
+
+## junction detail
+
+```{r}
+full_collisions %>% ggplot(aes(junction_detail)) + geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+```{r}
+full_collisions %>% ggplot(aes(x = junction_detail, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## junction control
+
+```{r}
+full_collisions %>% ggplot(aes(junction_control)) + geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+```{r}
+full_collisions %>% ggplot(aes(x = junction_control, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## pedestrian_crossing_human_control
+
+```{r}
+p1 <- full_collisions %>% ggplot(aes(pedestrian_crossing_human_control)) + 
+  geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+
+p2 <- full_collisions %>% ggplot(aes(x = pedestrian_crossing_human_control, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+p1 + p2
+```
+
+## pedestrian_crossing_physical_facilities
+
+```{r}
+p1 <- full_collisions %>% ggplot(aes(pedestrian_crossing_human_control)) + 
+  geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+
+p2 <- full_collisions %>% ggplot(aes(x = pedestrian_crossing_human_control, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+p1 + p2
+```
+
+## light_conditions
+
+```{r}
+p1 <- full_collisions %>% ggplot(aes(light_conditions)) + 
+  geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+
+p2 <- full_collisions %>% ggplot(aes(x = light_conditions, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+p1 + p2
+```
+
+## weather_conditions
+
+```{r}
+p1 <- full_collisions %>% ggplot(aes(weather_conditions)) + 
+  geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+
+p2 <- full_collisions %>% ggplot(aes(x = weather_conditions, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+p1 + p2
+```
+
+## special_conditions_at_site
+
+```{r}
+p1 <- full_collisions %>% ggplot(aes(special_conditions_at_site)) + 
+  geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+
+p2 <- full_collisions %>% ggplot(aes(x = special_conditions_at_site, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+p1 + p2
+```
+
+## carriageway_hazards
+
+```{r}
+p1 <- full_collisions %>% ggplot(aes(carriageway_hazards)) + 
+  geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+
+p2 <- full_collisions %>% ggplot(aes(x = carriageway_hazards, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 60)) +
+  theme(legend.position = "none")
+p1 + p2
+```
+
+## did_police_officer_attend_scene_of_accident
+
+```{r}
+p1 <- full_collisions %>% ggplot(aes(did_police_officer_attend_scene_of_accident)) + 
+  geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme(legend.position = "none")
+
+p2 <- full_collisions %>% ggplot(aes(x = did_police_officer_attend_scene_of_accident, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme(legend.position = "none")
+p1 + p2
+```
+
+## trunk_road_flag
+
+```{r}
+p1 <- full_collisions %>% ggplot(aes(trunk_road_flag)) + 
+  geom_bar(aes(fill = accident_severity)) + scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme(legend.position = "none")
+
+p2 <- full_collisions %>% ggplot(aes(x = trunk_road_flag, fill = accident_severity)) + 
+  geom_bar(position = "fill") + scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme(legend.position = "none")
+p1 + p2
+```
+
+
+

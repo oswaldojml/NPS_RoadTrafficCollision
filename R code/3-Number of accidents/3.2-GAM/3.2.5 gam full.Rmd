@@ -1,0 +1,787 @@
+---
+title: "Nonparametric Analysis of UK Road Accidents"
+subtitle: "dayly accidents using location and time and random effects"
+author:
+    - "Valeria Iapaolo"
+    - "Oswaldo Morales"
+    - "Riccardo Morandi"
+    - "Abylai Orynbassar"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+    pdf_document:
+        toc: true
+        toc_depth: 3
+        number_section: true
+date: "2023-12-15"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    #dev = c('pdf'),
+    fig.align = 'center'
+    #fig.path = 'output/',
+    #fig.height = 6,
+    #fig.width = 12
+)
+```
+
+```{r libraries inclusions, include=FALSE}
+library(tidyverse)
+library(mgcv)
+library(splines)
+library(lubridate)
+library(ggplot2)
+library(knitr)
+library(sp)
+library(rgl)
+library(splines)
+library(pbapply)
+library(devtools)
+library(visreg)
+library(mgcViz)
+```
+
+```{r}
+load("~/Documents/Nonparametric Statisics/Project/clean data/full_collisions.RData")
+```
+
+```{r}
+glimpse(full_collisions)
+```
+
+```{r}
+df_spatial <- full_collisions %>% 
+  select(c(date,latitude,longitude,accident_year,light_conditions,weather_conditions,day_of_week)) %>%
+  drop_na()
+rm(full_collisions)
+```
+
+```{r}
+geom_map <- map_data("world",region = "UK") %>% filter(!(subregion %in% c("Northern Ireland")))
+
+geom_map_no_islands <- geom_map %>% filter(group == 15)
+```
+
+```{r}
+max_lat <- range(geom_map_no_islands$lat)
+max_lon <- range(geom_map_no_islands$long)
+```
+
+```{r}
+geom_map_red <- geom_map %>% filter(lat <= max_lat[2] & lat >= max_lat[1] &
+                                       long <= max_lon[2] & long >= max_lon[1])
+```
+
+this will allow is to get a better result since avoiding the extremes:
+
+```{r}
+df_spatial <- df_spatial %>% filter(latitude <= max_lat[2] & latitude >= max_lat[1] &
+                                       longitude <= max_lon[2] & longitude >= max_lon[1])
+```
+
+```{r}
+df_binned <- df_spatial %>% mutate(latitude = ceiling(10*latitude)/10,longitude = ceiling(10*longitude)/10) %>% group_by(latitude,longitude,date) %>% summarise(n = n()) %>% ungroup()
+```
+
+selecting a reduced dataset for faster experimentation 
+
+```{r}
+df_red <- df_binned %>% filter(lubridate::year(date) == 2022)
+```
+
+```{r}
+world_cities <- read.csv("/Users/macbookpro/Documents/Nonparametric Statisics/Project/raw data/worldcities.csv")
+```
+
+selecting the biggest cities:
+
+```{r}
+uk_cities <- world_cities %>% filter(country == "United Kingdom")
+
+cities <- uk_cities %>% select(c(city,lat,lng,population)) %>% filter(population > 150000) %>% 
+  filter(city != "Belfast")
+```
+
+we can add more information about the time:
+
+```{r}
+df_red_day <- df_red_day %>% mutate(month = lubridate::month(date),day_type = ifelse(weekdays(date) %in% c("Saturday", "Sunday"), "weekend", "weekday")) %>% mutate(day_type = as.factor(day_type))
+```
+
+we can try to add more information about the weather ad the district:
+
+```{r}
+df_weather <- df_spatial %>%
+  filter(!(weather_conditions %in% c("Data missing or out of range", "Unknown","Other"))) %>%
+  mutate(
+    wind = case_when(
+      weather_conditions %in% c("Fine + high winds", "Raining + high winds",
+                                             "Snowing + high winds") ~ "High winds",
+      weather_conditions %in% c("Fine no high winds", "Raining no high winds",
+                                             "Snowing no high winds","Fog or mist") ~ "No high winds"
+    ),
+    rainfall = case_when(
+      weather_conditions %in% c("Raining + high winds", "Raining no high winds") ~ "Raining",
+      weather_conditions %in% c("Snowing + high winds", "Snowing no high winds") ~ "Snowing",
+      weather_conditions %in% c("Fine + high winds", "Fine no high winds") ~ "Fine",
+      weather_conditions %in% c("Fog or mist") ~ "Fog"
+    )
+  ) 
+
+df_weather <- df_weather %>% mutate(wind = as.factor(wind),rainfall = as.factor(rainfall)) %>%
+  mutate(latitude = ceiling(10*latitude)/10,longitude = ceiling(10*longitude)/10) %>%
+  group_by(latitude,longitude,date) %>% 
+  summarise(n = n(),wind = names(sort(table(wind), decreasing = TRUE)[1]),
+            precipitation = names(sort(table(rainfall), decreasing = TRUE)[1])) %>% ungroup()
+```
+
+```{r}
+df_weather$wind <- factor(df_weather$wind)
+df_weather$precipitation <- factor(df_weather$precipitation)
+```
+
+```{r}
+df_weather <- df_weather %>% mutate(day_of_year = yday(date),day_type = ifelse(weekdays(date) %in% c("Saturday", "Sunday"), "weekend", "weekday")) %>% mutate(day_type = as.factor(day_type))
+```
+
+```{r}
+df_weather_red <- df_weather %>% filter(year(date) == 2022)
+```
+
+another possibility is to also add a random effect.
+
+we can do it for police force to start.
+
+```{r}
+df_district <- full_collisions %>% 
+  select(latitude, longitude, police_force,local_authority_district) %>%
+  filter(latitude <= max_lat[2] & latitude >= max_lat[1] &
+                                       longitude <= max_lon[2] & longitude >= max_lon[1]) %>%
+  mutate(latitude = ceiling(10*latitude)/10,longitude = ceiling(10*longitude)/10) %>%
+  group_by(latitude,longitude) %>%
+  summarise(police_force = names(sort(table(police_force), decreasing = TRUE)[1]),
+            district = names(sort(table(local_authority_district), decreasing = TRUE)[1])) %>%
+  ungroup()
+
+df_district <- df_district %>% mutate(police_force = factor(police_force),district = factor(district))
+```
+
+```{r}
+df_weather <- inner_join(df_weather,df_district)
+```
+
+```{r}
+save(df_weather,file = "df_weather.RData")
+```
+
+```{r}
+df_weather %>% ggplot(aes(longitude,latitude)) + geom_point(aes(color = police_force))
+```
+
+```{r}
+df_district %>% ggplot(aes(longitude,latitude)) + geom_point(aes(color = district)) +
+  theme(legend.position = "none")
+```
+
+from this resolution we are loosing some districts.
+
+we can start by the police force.
+
+```{r}
+df_weather_red2 <- df_weather %>% filter(year(date) == 2022)
+```
+
+just police raom effects
+
+```{r}
+gam_day_police_qp <- bam(n ~ day_type + precipitation + s(day_of_year,k = 53, bs = "cr") + 
+                       s(police_force, bs = "re"), 
+                data = df_weather_red2, family=quasipoisson(), method='REML')
+```
+
+```{r}
+summary(gam_day_police_qp)
+```
+
+```{r}
+b_pol_qp <- getViz(gam_day_police_qp)
+```
+
+```{r}
+print(plot(b_pol_qp, allTerms = T), pages = 1)
+```
+
+```{r}
+check(b_pol_qp)
+```
+
+the fitted values are not good
+
+if we also use the location
+
+```{r}
+gam_day_police_qp2 <- bam(n ~ day_type + precipitation + s(day_of_year,k = 53, bs = "cr") + 
+                       s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)) + 
+                         s(police_force, bs = "re"), 
+                data = df_weather_red2, family=quasipoisson(), method='REML')
+```
+
+```{r}
+summary(gam_day_police_qp2)
+```
+
+```{r}
+b_pol_qp2 <- getViz(gam_day_police_qp2)
+```
+
+```{r}
+print(plot(b_pol_qp2, select = c(1,3:5)), pages = 1)
+```
+
+```{r}
+plot(sm(b_pol_qp2, 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+```{r}
+check(b_pol_qp2)
+```
+
+this is a bit better
+
+we are having some effect of the population in the rendom effects.
+
+looking at the district instead:
+
+```{r}
+gam_day_district_qp <- bam(n ~ day_type + precipitation + s(day_of_year,k = 53, bs = "cr") + 
+                       s(district, bs = "re"), 
+                data = df_weather_red2, family=poisson(), method='REML')
+```
+
+```{r}
+summary(gam_day_district_qp)
+```
+
+```{r}
+b_dist_qp <- getViz(gam_day_district_qp)
+```
+
+```{r}
+print(plot(b_dist_qp, allTerms = T), pages = 1)
+```
+
+```{r}
+check(b_dist_qp)
+```
+
+the fitted values are not good
+
+if we also use the location
+
+```{r}
+gam_day_district_qp2 <- bam(n ~ day_type + precipitation + s(day_of_year,k = 53, bs = "cr") + 
+                       s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)) + 
+                         s(district, bs = "re"), 
+                data = df_weather_red2, family=quasipoisson(), method='REML')
+```
+
+```{r}
+summary(gam_day_district_qp2)
+```
+
+not much improvement compared to the only districts
+
+```{r}
+b_dist_qp2 <- getViz(gam_day_district_qp2)
+```
+
+```{r}
+print(plot(b_dist_qp2, select = c(1,3:5)), pages = 1)
+```
+
+```{r}
+plot(sm(b_dist_qp2, 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+this is to be expected, the improvement is not the best
+
+```{r}
+check(b_dist_qp2)
+```
+
+we can try to have more years.
+
+```{r}
+df_weather <-df_weather %>% mutate(year = year(date),day = factor(wday(date)),
+                  covid_year = factor((year(date)==2020)))
+
+df_w_red <- df_weather %>% filter(year >= 2018)
+```
+
+starting with 5 years to see the results
+
+```{r}
+system.time(
+gam_day_district_qp_full <- bam(n ~ day + precipitation + wind + year + covid_year  +
+                                  s(day_of_year,k = 53, bs = "cr") + 
+                       s(district, bs = "re"), 
+                data = df_w_red, family=quasipoisson(), method='REML')
+)
+```
+
+```{r}
+summary(gam_day_district_qp_full)
+```
+
+```{r}
+b_dist_qp_f <- getViz(gam_day_district_qp_full)
+```
+
+```{r}
+print(plot(b_dist_qp_f, select = c(1,3:7)), pages = 1)
+```
+
+```{r}
+print(plot(b_dist_qp_f, select = 2), pages = 1)
+```
+
+problem with the normality of the random effects
+
+```{r}
+check(b_dist_qp_f)
+```
+
+not too bed here.
+
+incorporating also the lat and long
+
+```{r}
+system.time(
+gam_day_district_qp_full2 <- bam(n ~ day + precipitation + wind + year + covid_year  +
+                                  s(day_of_year,k = 53, bs = "cr") + 
+                                  s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)) +
+                       s(district, bs = "re"), 
+                data = df_w_red, family=quasipoisson(), method='REML')
+)
+```
+
+```{r}
+summary(gam_day_district_qp_full2)
+```
+
+```{r}
+saveRDS(gam_day_district_qp_full2,file='gam_day_district_qp_full2')
+```
+
+```{r}
+gam_day_district_qp_full2 <- readRDS('gam_day_district_qp_full2')
+```
+
+```{r}
+b_dist_qp_f2 <- getViz(gam_day_district_qp_full2)
+```
+
+```{r}
+print(plot(b_dist_qp_f2, select = c(1,4:8)), pages = 1)
+```
+
+```{r}
+print(plot(b_dist_qp_f2, select = 3), pages = 1)
+```
+
+problem with the normality of the random effects, not extremely bad
+
+```{r}
+plot(sm(b_dist_qp_f2, 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1) + theme(plot.title = element_text(hjust = 0.5),legend.position = "none")
+```
+
+```{r}
+check(b_dist_qp_f2)
+```
+
+this is defiitely the best model so far, the only thig is to group snow ad fog since
+they have the same effect.
+
+```{r}
+newd <- with(df_w_red, data.frame(latitude = mean(latitude),
+                                  longitude = mean(longitude),
+                                  day_of_year = 120,
+                                  wind = "No high winds",
+                                  precipitation = "Fine",
+                                  day = 1,
+                                  year = 2022,
+                                  covid_year = FALSE,
+                                district = levels(district)))
+
+p <- predict(gam_day_district_qp_full2, newd, type = "terms", se.fit = TRUE)
+re <- p[["fit"]][ , "s(district)"]
+se <- p[["se.fit"]][ , "s(district)"]
+
+data <- data.frame(district = levels(df_w_red$district), effect = re,std.err = se)
+```
+
+```{r}
+data %>% 
+ggplot(aes(effect, fct_reorder(district, effect))) +
+  geom_vline(xintercept = 0, color = "gray50", lty = 2, linewidth = 1.2) +
+  geom_errorbar(aes(
+    xmin = effect - 1.96*std.err,
+    xmax = effect + 1.96*std.err),width = 0.5, alpha = 0.7) +
+  geom_point(size = 1,colour = "blue") + theme_minimal() + 
+  labs(y = "District", x = "Random effect") + ggtitle("Random effects for each district") + 
+  theme(legend.position = "none",plot.title = element_text(size = 16,hjust = 0.5),
+        axis.text.y = element_blank(),axis.ticks.y = element_blank()) 
+```
+
+```{r}
+tail(data %>% arrange(effect))
+```
+
+this are districts of London.
+
+```{r}
+head(data %>% arrange(effect))
+```
+
+Broxbourne has 15000 inhabitants. 
+
+this does not consider the latitude and logitude components.
+
+we can do the same but for the police stations:
+
+starting with 5 years to see the results
+
+```{r}
+system.time(
+gam_day_pol_qp_full <- bam(n ~ day + precipitation + wind + year + covid_year  +
+                                  s(day_of_year,k = 53, bs = "cr") + 
+                       s(police_force, bs = "re"), 
+                data = df_w_red, family=quasipoisson(), method='REML')
+)
+```
+
+```{r}
+summary(gam_day_pol_qp_full)
+```
+
+```{r}
+b_pol_qp_f <- getViz(gam_day_pol_qp_full)
+```
+
+```{r}
+print(plot(b_pol_qp_f, select = c(1,3:7)), pages = 1)
+```
+
+```{r}
+print(plot(b_pol_qp_f, select = 2), pages = 1)
+```
+
+problem with the normality of the random effects, the outlier is probably london:
+
+```{r}
+check(b_pol_qp_f)
+```
+
+not too bed here.
+
+```{r}
+newd <- with(df_w_red, data.frame(latitude = mean(latitude),
+                                  longitude = mean(longitude),
+                                  day_of_year = 120,
+                                  wind = "No high winds",
+                                  precipitation = "Fine",
+                                  day = 1,
+                                  year = 2022,
+                                  covid_year = FALSE,
+                                  police_force = levels(police_force)))
+
+p <- predict(gam_day_pol_qp_full, newd, type = "terms", se.fit = TRUE)
+re <- p[["fit"]][ , "s(police_force)"]
+se <- p[["se.fit"]][ , "s(police_force)"]
+
+data <- data.frame(police_force = levels(df_weather_red2$police_force), effect = re,std.err = se)
+```
+
+```{r}
+data %>% 
+ggplot(aes(effect, fct_reorder(police_force, effect))) +
+  geom_vline(xintercept = 0, color = "gray50", lty = 2, linewidth = 1.2) +
+  geom_errorbar(aes(
+    xmin = effect - 1.96*std.err,
+    xmax = effect + 1.96*std.err),width = 0.5, alpha = 0.7) +
+  geom_point(size = 1,colour = "blue") + theme_minimal() + 
+  labs(y = "District", x = "Random effect") + ggtitle("Random effects for each police force") + 
+  theme(legend.position = "none",plot.title = element_text(size = 16,hjust = 0.5)) 
+```
+
+this is reasonable
+
+incorporating also the lat and long
+
+```{r}
+system.time(
+gam_day_pol_qp_full2 <- bam(n ~ day + precipitation + wind + year + covid_year  +
+                                  s(day_of_year,k = 53, bs = "cr") + 
+                                  s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)) +
+                       s(police_force, bs = "re"), 
+                data = df_w_red, family=quasipoisson(), method='REML')
+)
+```
+
+```{r}
+summary(gam_day_pol_qp_full2)
+```
+
+```{r}
+b_pol_qp_f2 <- getViz(gam_day_pol_qp_full2)
+```
+
+```{r}
+print(plot(b_pol_qp_f2, select = c(1,4:8)), pages = 1)
+```
+
+```{r}
+print(plot(b_pol_qp_f2, select = 3), pages = 1)
+```
+
+normality of the random effects, not bad
+
+```{r}
+plot(sm(b_pol_qp_f2, 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + l_points() +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("spatial component") + coord_fixed(ratio=1)
+```
+
+```{r}
+check(b_pol_qp_f2)
+```
+
+this is defiitely the best model so far, the only thig is to group snow ad fog since
+they have the same effect.
+
+```{r}
+newd <- with(df_w_red, data.frame(latitude = mean(latitude),
+                                  longitude = mean(longitude),
+                                  day_of_year = 120,
+                                  wind = "No high winds",
+                                  precipitation = "Fine",
+                                  day = 1,
+                                  year = 2022,
+                                  covid_year = FALSE,
+                                  police_force = levels(police_force)))
+
+p <- predict(gam_day_pol_qp_full2, newd, type = "terms", se.fit = TRUE)
+re <- p[["fit"]][ , "s(police_force)"]
+se <- p[["se.fit"]][ , "s(police_force)"]
+
+data <- data.frame(police_force = levels(df_weather$police_force), effect = re,std.err = se)
+```
+
+```{r}
+data %>% 
+ggplot(aes(effect, fct_reorder(police_force, effect))) +
+  geom_vline(xintercept = 0, color = "gray50", lty = 2, linewidth = 1.2) +
+  geom_errorbar(aes(
+    xmin = effect - 1.96*std.err,
+    xmax = effect + 1.96*std.err),width = 0.5, alpha = 0.7) +
+  geom_point(size = 1,colour = "blue") + theme_minimal() + 
+  labs(y = "District", x = "Random effect") + ggtitle("Random effects for each police force") + 
+  theme(legend.position = "none",plot.title = element_text(size = 16,hjust = 0.5)) 
+```
+
+this does not consider the latitude and logitude components.
+
+```{r}
+df_w_red2 <- df_w_red %>% mutate(year = year - 2000) %>% mutate(day = fct_collapse(day,
+                                           "mon" = 2,
+                                           "tue-thur" = c(3,4,5),
+                                           "fri" = 6,
+                                           "sat" = 7,
+                                           "sun"= 1)) %>% mutate(precipitation = fct_collapse(precipitation,
+                                           "Fine" = "Fine",
+                                           "Raining" = "Raining",
+                                           "Fog/snow" = c("Fog","Snowing")))
+```
+
+```{r}
+system.time(
+gam_day_district_qp_full3 <- bam(n ~ day + precipitation + wind + year + covid_year  +
+                                  s(day_of_year,k = 53, bs = "cr") + 
+                                  s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)) +
+                       s(district, bs = "re"), 
+                data = df_w_red2, family=quasipoisson(), method='REML')
+)
+```
+
+```{r}
+summary(gam_day_district_qp_full3)
+```
+
+```{r}
+print(plot(b_dist_qp_f3, select = c(1,4:8)), pages = 1)
+```
+
+```{r}
+print(plot(b_dist_qp_f3, select = 3), pages = 1)
+```
+
+problem with the normality of the random effects, not extremely bad
+
+```{r}
+plot(sm(b_dist_qp_f3, 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + 
+  xlab("longitude") + ylab("latitude") + ggtitle("spatial component") + coord_fixed(ratio=1) + theme(plot.title = element_text(hjust = 0.5),legend.position = "none")
+```
+
+```{r}
+check(b_dist_qp_f3)
+```
+
+this is defiitely the best model so far, the only thig is to group snow ad fog since
+they have the same effect.
+
+```{r}
+newd <- with(df_w_red2, data.frame(latitude = mean(latitude),
+                                  longitude = mean(longitude),
+                                  day_of_year = 120,
+                                  wind = "No high winds",
+                                  precipitation = "Fine",
+                                  day = 1,
+                                  year = 2022,
+                                  covid_year = FALSE,
+                                district = levels(district)))
+
+p <- predict(gam_day_district_qp_full2, newd, type = "terms", se.fit = TRUE)
+re <- p[["fit"]][ , "s(district)"]
+se <- p[["se.fit"]][ , "s(district)"]
+
+data <- data.frame(district = levels(df_w_red2$district), effect = re,std.err = se)
+```
+
+```{r}
+data %>% 
+ggplot(aes(effect, fct_reorder(district, effect))) +
+  geom_vline(xintercept = 0, color = "gray50", lty = 2, linewidth = 1.2) +
+  geom_errorbar(aes(
+    xmin = effect - 1.96*std.err,
+    xmax = effect + 1.96*std.err),width = 0.5, alpha = 0.7) +
+  geom_point(size = 1,colour = "blue") + theme_minimal() + 
+  labs(y = "District", x = "Random effect") + ggtitle("Random effects for each district") + 
+  theme(legend.position = "none",plot.title = element_text(size = 16,hjust = 0.5),
+        axis.text.y = element_blank(),axis.ticks.y = element_blank()) 
+```
+
+```{r}
+tail(data %>% arrange(effect))
+```
+
+this are districts of London.
+
+```{r}
+head(data %>% arrange(effect))
+```
+
+```{r}
+df_w_red3 <- df_w_red %>% mutate(year = year - 2000) %>% mutate(precipitation = fct_collapse(precipitation,
+                                           "Fine" = "Fine",
+                                           "Raining" = "Raining",
+                                           "Fog/snow" = c("Fog","Snowing")))
+```
+
+```{r}
+system.time(
+gam_day_district_qp_full4 <- bam(n ~ day + precipitation + wind + year + covid_year  +
+                                  s(day_of_year,k = 53, bs = "cr") + 
+                                  s(longitude,latitude,bs = "gp",k = 100,m = c(1,0.5)) +
+                       s(district, bs = "re"), 
+                data = df_w_red3, family=quasipoisson(), method='REML')
+)
+```
+
+```{r}
+summary(gam_day_district_qp_full4)
+```
+
+```{r}
+b_dist_qp_f4 <- getViz(gam_day_district_qp_full4)
+```
+
+```{r}
+print(plot(b_dist_qp_f4, select = c(1,4:8)), pages = 1)
+```
+
+```{r}
+print(plot(b_dist_qp_f4, select = 3), pages = 1)
+```
+
+problem with the normality of the random effects, not extremely bad
+
+```{r}
+plot(sm(b_dist_qp_f4, 2)) + l_fitRaster() + l_fitContour() +
+    geom_polygon(data = geom_map_red,aes(x=long, y = lat,group=group),
+                 fill=NA,color="black",lwd = 1,inherit.aes = F) + 
+  xlab("longitude") + ylab("latitude") + ggtitle("spatial component") + coord_fixed(ratio=1) + theme(plot.title = element_text(hjust = 0.5),legend.position = "none")
+```
+
+```{r}
+check(b_dist_qp_f4)
+```
+
+this is definitely the best model so far, the only thig is to group snow ad fog since
+they have the same effect.
+
+```{r}
+newd <- with(df_w_red3, data.frame(latitude = mean(latitude),
+                                  longitude = mean(longitude),
+                                  day_of_year = 120,
+                                  wind = "No high winds",
+                                  precipitation = "Fine",
+                                  day = 1,
+                                  year = 2022,
+                                  covid_year = FALSE,
+                                district = levels(district)))
+
+p <- predict(gam_day_district_qp_full4, newd, type = "terms", se.fit = TRUE)
+re <- p[["fit"]][ , "s(district)"]
+se <- p[["se.fit"]][ , "s(district)"]
+
+data <- data.frame(district = levels(df_w_red3$district), effect = re,std.err = se)
+```
+
+```{r}
+data %>% 
+ggplot(aes(effect, fct_reorder(district, effect))) +
+  geom_vline(xintercept = 0, color = "gray50", lty = 2, linewidth = 1.2) +
+  geom_errorbar(aes(
+    xmin = effect - 1.96*std.err,
+    xmax = effect + 1.96*std.err),width = 0.5, alpha = 0.7) +
+  geom_point(size = 1,colour = "blue") + theme_minimal() + 
+  labs(y = "District", x = "Random effect") + ggtitle("Random effects for each district") + 
+  theme(legend.position = "none",plot.title = element_text(size = 16,hjust = 0.5),
+        axis.text.y = element_blank(),axis.ticks.y = element_blank()) 
+```
+
+```{r}
+tail(data %>% arrange(effect))
+```
+
+this are districts of London.
+
+```{r}
+head(data %>% arrange(effect))
+```
