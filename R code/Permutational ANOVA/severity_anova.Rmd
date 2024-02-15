@@ -1,6 +1,6 @@
 ---
 title: "Nonparametric Analysis of UK Road Accidents"
-subtitle: "Permutational ANOVA"
+subtitle: "Permutational ANOVA Severity"
 author:
     - "Valeria Iapaolo"
     - "Oswaldo Morales"
@@ -105,9 +105,9 @@ save(T_stat, file="severity_perm.Rdata")
 ```{r}
 T0 <- summary(anova_result)[[1]][1,4]  # extract the test statistic
 T0
-quartz()
-hist(T_stat)
-abline(v=T0,col=3,lwd=2)
+#quartz()
+hist(T_stat, xlim = range(0,12), breaks = 40)
+abline(v=11,col=3,lwd=2)
 ```
 ```{r}
 p_val <- sum(T_stat>=T0)/B
@@ -116,8 +116,17 @@ p_val
 
 
 ```{r}
-plot(ecdf(T_stat))
-abline(v=T0)
+plot(ecdf(T_stat), xlim = c(-1, 12))
+abline(v=T0, col=3,lwd=4)
+```
+```{r}
+load("severity_perm.Rdata")
+ggplot()+aes(T_stat)+geom_histogram(binwidth = 0.4) + geom_vline(aes(xintercept=11.0201), color= "red")
+
 ```
 
+```{r}
+ggplot()+aes(T_stat)+stat_ecdf(geom = "step") + geom_vline(aes(xintercept=11.0201), color= "red")
+
+```
 
