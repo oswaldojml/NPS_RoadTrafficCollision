@@ -211,4 +211,7 @@ n <- dim(dat)[1]
 anova_result <- aov(accident_severity ~ number_of_casualties + weekend + light_conditions, data = dat)
 summary(anova_result)
 ```
+```{r}
+T0_nmb_casualties <- summary.aov(aov(number_of_crashes ~ binned_longitude + binned_latitude+ binned_longitude:binned_latitude,data = location_crash_data))[[1]][3,4]
+```
 
